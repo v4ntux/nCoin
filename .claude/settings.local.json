@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($h1=@{'X-Dev-User'='1'}; $p=Invoke-RestMethod -Uri http://127.0.0.1:8000/api/profile -Headers $h1; \"profile.usd=$\\($p.usd\\)\"; $w=Invoke-RestMethod -Uri http://127.0.0.1:8000/api/wallet -Headers $h1; \"wallet.usd=$\\($w.usd\\)\"; $ex=Invoke-RestMethod -Uri http://127.0.0.1:8000/api/exchange -Headers $h1; \"exchange.usd=$\\($ex.usd\\), trades=$\\($ex.trades.Count\\)\")",
+      "PowerShell($h1=@{'X-Dev-User'='1'}; $p=Invoke-RestMethod -Uri http://127.0.0.1:8000/api/profile -Headers $h1; \"profile.usd=$\\($p.usd\\) \\(expect 0.066\\)\")",
+      "PowerShell($h1=@{'X-Dev-User'='1'}; $ex=Invoke-RestMethod -Uri http://127.0.0.1:8000/api/exchange -Headers $h1; \"exchange.usd=$\\($ex.usd\\) trades=$\\($ex.trades.Count\\) price=$\\($ex.price\\)\"; $w=Invoke-RestMethod -Uri http://127.0.0.1:8000/api/wallet -Headers $h1; \"wallet.usd=$\\($w.usd\\)\")",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\van\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--code-vibe-nCoun\\\\92414e21-9c63-4ac0-9068-df73c8ee0dfd\\\\scratchpad\\\\smoke2.py\")",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\van\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--code-vibe-nCoun\\\\92414e21-9c63-4ac0-9068-df73c8ee0dfd\\\\scratchpad\\\\keeper_test.py\")",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\van\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--code-vibe-nCoun\\\\92414e21-9c63-4ac0-9068-df73c8ee0dfd\\\\scratchpad\\\\rename_uzs.py\")"
+    ]
+  }
+}

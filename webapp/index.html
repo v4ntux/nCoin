@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b0a08">
+<title>nCoin — Mellstroy Coin</title>
+<link rel="stylesheet" href="css/app.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+<div class="bg" aria-hidden="true">
+  <div class="orb orb-a"></div>
+  <div class="orb orb-b"></div>
+  <div class="grain"></div>
+</div>
+
+<main id="app">
+  <!-- ══════════ HOME ══════════ -->
+  <section class="screen active" id="screen-home">
+    <header class="top glass-thin">
+      <div class="who">
+        <div class="ava" id="avaMini">N</div>
+        <div class="who-txt">
+          <div class="who-name" id="userName">…</div>
+          <div class="who-lvl">
+            <span id="userLevel">Lv 1</span>
+            <span class="xp-track"><span class="xp-fill" id="xpFill"></span></span>
+          </div>
+        </div>
+      </div>
+      <div class="vip-pill" id="vipPill">Free</div>
+    </header>
+
+    <div class="balance">
+      <div class="coins">
+        <img class="coin-mini" src="img/mell-coin.png" alt="">
+        <span id="balCoins">0</span>
+      </div>
+      <div class="usd" id="balUsd">≈ $0.00</div>
+    </div>
+
+    <div id="dailyCard" class="card daily glass hidden">
+      <div class="daily-txt">
+        <b class="row-ic" data-ic="gift">Daily Reward</b>
+        <span id="dailyInfo">Day 1 — +100</span>
+      </div>
+      <button class="btn-small" id="dailyBtn">Claim</button>
+    </div>
+
+    <div class="core-wrap">
+      <div class="combo-badge glass-thin hidden" id="comboBadge">Combo <b>0</b></div>
+      <button class="plate" id="core" aria-label="Tap">
+        <span class="plate-tilt" id="plateTilt">
+          <img class="mell-img" src="img/mell-coin.png" alt="Mellstroy Coin" draggable="false">
+          <span class="plate-shine"></span>
+        </span>
+        <span class="core-overheat hidden" id="overheatOverlay">
+          <b>OVERHEAT</b><span id="overheatTimer">30</span>
+        </span>
+      </button>
+      <div id="particles"></div>
+    </div>
+
+    <div class="meters">
+      <div class="meter">
+        <div class="meter-top"><span class="row-ic" data-ic="bolt">Energy</span><span id="energyTxt">0/0</span></div>
+        <div class="bar"><div class="bar-fill energy" id="energyFill"></div></div>
+      </div>
+      <div class="meter">
+        <div class="meter-top"><span class="row-ic" data-ic="flame">Heat</span><span id="heatTxt">0%</span></div>
+        <div class="bar"><div class="bar-fill heat" id="heatFill"></div></div>
+      </div>
+    </div>
+
+    <div class="card mining glass">
+      <div class="mining-head">
+        <span class="mining-title row-ic" data-ic="pickaxe">Mining</span>
+        <span class="mining-rate" id="miningRate">+0/h</span>
+      </div>
+      <div class="bar big"><div class="bar-fill mine" id="miningFill"></div></div>
+      <div class="mining-info">
+        <span id="miningAmount">0 / 0</span>
+        <span id="miningTimer" class="mono">--:--:--</span>
+      </div>
+      <button class="btn-primary" id="collectBtn">Collect</button>
+    </div>
+
+    <div class="list-head hidden" id="eventsHead"><span class="row-ic" data-ic="gift">Events</span></div>
+    <div id="eventStrip"></div>
+
+    <div class="list-head"><span class="row-ic" data-ic="news">News &amp; Events</span></div>
+    <div class="news-strip" id="newsStrip"></div>
+  </section>
+
+  <!-- ══════════ EXCHANGE ══════════ -->
+  <section class="screen" id="screen-market">
+    <h1>Exchange</h1>
+    <div class="band-note" style="margin:-8px 2px 12px">P2P market — игроки торгуют друг с другом. Цену ставишь сам.</div>
+    <div class="bal-chips">
+      <div class="bal-chip glass-thin">
+        <img class="coin-mini sm" src="img/mell-coin.png" alt="">
+        <div><b id="exCoins">0</b><span>Coin</span></div>
+      </div>
+      <div class="bal-chip glass-thin">
+        <span class="usd-badge">$</span>
+        <div><b id="exUsd">0.00</b><span>USD</span></div>
+      </div>
+    </div>
+
+    <div class="card glass chart-card">
+      <div class="chart-head">
+        <div>
+          <div class="chart-price" id="exPrice">$0.00033</div>
+          <div class="chart-sub">Coin / USD</div>
+        </div>
+        <div class="chart-change" id="exChange">0%</div>
+      </div>
+      <canvas id="exChart" height="120"></canvas>
+      <div class="chips tf" id="tfChips">
+        <button class="chip active" data-tf="day">1D</button>
+        <button class="chip" data-tf="month">1M</button>
+        <button class="chip" data-tf="all">All</button>
+      </div>
+      <div class="band-note" id="exBand"></div>
+    </div>
+
+    <div class="seg glass-thin trade-seg" id="exSeg">
+      <button class="seg-btn buy active" data-side="buy">Buy</button>
+      <button class="seg-btn sell" data-side="sell">Sell</button>
+    </div>
+    <div class="card glass trade-form">
+      <div class="field">
+        <label>Price (USD per Coin)</label>
+        <input id="exPriceIn" type="number" step="0.00001" inputmode="decimal" placeholder="0.00033">
+      </div>
+      <div class="field">
+        <label>Amount (Coin)</label>
+        <input id="exAmountIn" type="number" inputmode="numeric" placeholder="min 100">
+      </div>
+      <div class="trade-total"><span>Total</span><b id="exTotal">0 USD</b></div>
+      <div class="trade-total"><span>Fee (<span id="exFeePct">2</span>% for sellers)</span><b id="exFee">0 USD</b></div>
+      <button class="btn-primary buy" id="exSubmit">Buy Coin</button>
+    </div>
+
+    <div class="list-head"><span>Order book</span><span id="exSpread"></span></div>
+    <div class="card glass book" id="exBook"><div class="book-col" id="exBids"></div><div class="book-col" id="exAsks"></div></div>
+
+    <div class="list-head"><span>My open orders</span></div>
+    <div class="list" id="exMyOrders"></div>
+
+    <div class="list-head"><span>Recent trades</span></div>
+    <div class="list" id="exTrades"></div>
+
+    <div class="list-head"><span class="row-ic" data-ic="crown">Top holders</span></div>
+    <div class="list" id="exHolders"></div>
+  </section>
+
+  <!-- ══════════ EARN (3-in-1) ══════════ -->
+  <section class="screen" id="screen-earn">
+    <div id="earnRoot">
+      <h1>Earn</h1>
+      <div class="card glass tool-sec">
+        <div class="tool-head">
+          <span class="row-ic" data-ic="up">Upgrades</span>
+          <button class="btn-open" data-open="upgrades">Open</button>
+        </div>
+        <div class="list" id="earnUpPreview"></div>
+      </div>
+      <div class="card glass tool-sec">
+        <div class="tool-head">
+          <span class="row-ic" data-ic="check">Tasks</span>
+          <button class="btn-open" data-open="tasks">Open</button>
+        </div>
+        <div class="list" id="earnTaskPreview"></div>
+      </div>
+      <div class="card glass tool-sec">
+        <div class="tool-head">
+          <span class="row-ic" data-ic="users">Friends</span>
+          <button class="btn-open" data-open="friends">Open</button>
+        </div>
+        <div id="earnFriendPreview"></div>
+      </div>
+    </div>
+
+    <div id="subUpgrades" class="subview hidden">
+      <div class="sub-head"><button class="btn-back" data-back></button><h1>Upgrades</h1></div>
+      <div class="chips" id="branchChips">
+        <button class="chip active" data-branch="tap">Tap</button>
+        <button class="chip" data-branch="mining">Mining</button>
+        <button class="chip" data-branch="global">Global</button>
+      </div>
+      <div class="list" id="upgradeList"></div>
+    </div>
+
+    <div id="subTasks" class="subview hidden">
+      <div class="sub-head"><button class="btn-back" data-back></button><h1>Tasks</h1></div>
+      <div id="taskList"></div>
+    </div>
+
+    <div id="subFriends" class="subview hidden">
+      <div class="sub-head"><button class="btn-back" data-back></button><h1>Friends</h1></div>
+      <div class="card glass ref-card">
+        <p id="refBonusTxt">Invite friends — earn together.</p>
+        <div class="ref-link glass-thin" id="refLink">—</div>
+        <div class="row-btns">
+          <button class="btn-secondary" id="copyRefBtn">Copy</button>
+          <button class="btn-primary" id="shareRefBtn">Share</button>
+        </div>
+      </div>
+      <div class="list-head"><span>My friends</span><span id="friendCount">0</span></div>
+      <div class="list" id="friendList"></div>
+    </div>
+  </section>
+
+  <!-- ══════════ TOP ══════════ -->
+  <section class="screen" id="screen-top">
+    <h1>Leaderboard</h1>
+    <div class="card glass league-card" id="myLeague"></div>
+    <div class="chips scroll-x" id="leagueChips"></div>
+    <div class="seg glass-thin" id="lbSeg">
+      <button class="seg-btn active" data-by="coins">Coins</button>
+      <button class="seg-btn" data-by="referrals">Friends</button>
+      <button class="seg-btn" data-by="level">Level</button>
+    </div>
+    <div class="me-rank glass-thin hidden" id="myRank"></div>
+    <div class="list" id="lbList"></div>
+  </section>
+
+  <!-- ══════════ WALLET ══════════ -->
+  <section class="screen" id="screen-wallet">
+    <div class="wallet-hero glass">
+      <div class="hero-bg" id="heroBg"></div>
+      <div class="hero-body">
+        <div class="ava big" id="avaBig">N</div>
+        <div class="prof-name" id="profName">…</div>
+        <div class="prof-sub" id="profSub">—</div>
+        <div class="hero-balances">
+          <div><img class="coin-mini sm" src="img/mell-coin.png" alt=""><b id="wCoins">0</b></div>
+          <div><span class="usd-badge">$</span><b id="wUsd">0.00</b></div>
+        </div>
+        <div class="hero-today" id="wToday"></div>
+      </div>
+    </div>
+
+    <div class="quick-grid six">
+      <button class="quick glass" id="qDeposit"><i data-ic="plus"></i>Deposit</button>
+      <button class="quick glass" id="qWithdraw"><i data-ic="down"></i>Withdraw</button>
+      <button class="quick glass" id="qSend"><i data-ic="send"></i>Send</button>
+      <button class="quick glass" id="qEdit"><i data-ic="edit"></i>Edit</button>
+      <button class="quick glass" id="qSupport"><i data-ic="chat"></i>Support</button>
+      <button class="quick glass" id="qStats"><i data-ic="stats"></i>Stats</button>
+    </div>
+
+    <div class="card glass plan-card">
+      <div class="plan-row">
+        <div>
+          <div class="plan-label">Your plan</div>
+          <b id="planName" class="row-ic" data-ic="crown">Free</b>
+          <div class="plan-sub" id="planSlots">0 withdraws / week</div>
+          <div class="plan-sub" id="planFees"></div>
+        </div>
+        <button class="btn-small" id="planUpgrade">Upgrade</button>
+      </div>
+    </div>
+
+    <div class="stats-grid hidden" id="statsGrid">
+      <div class="stat glass"><b id="stMined">0</b><span>Mined</span></div>
+      <div class="stat glass"><b id="stTapped">0</b><span>Tapped</span></div>
+      <div class="stat glass"><b id="stRef">0</b><span>Ref income</span></div>
+      <div class="stat glass"><b id="stTasks">0</b><span>Tasks done</span></div>
+    </div>
+
+    <div class="soon glass-thin" id="sendLimitNote"></div>
+    <div class="soon glass-thin">TON Keeper — soon</div>
+  </section>
+</main>
+
+<!-- ══════════ NAVBAR ══════════ -->
+<nav class="navbar glass" id="navbar">
+  <button class="nav-btn active" data-screen="home" aria-label="Home"><i data-ic="home"></i><span>Home</span></button>
+  <button class="nav-btn" data-screen="market" aria-label="Exchange"><i data-ic="chart"></i><span>Market</span></button>
+  <button class="nav-btn" data-screen="earn" aria-label="Earn"><i data-ic="up"></i><span>Earn</span></button>
+  <button class="nav-btn" data-screen="top" aria-label="Leaderboard"><i data-ic="trophy"></i><span>Top</span></button>
+  <button class="nav-btn" data-screen="wallet" aria-label="Wallet"><i data-ic="wallet"></i><span>Wallet</span></button>
+</nav>
+
+<!-- ══════════ SHEET / TOAST ══════════ -->
+<div class="sheet-back hidden" id="sheetBack"></div>
+<div class="sheet glass hidden" id="sheet">
+  <div class="sheet-grip"></div>
+  <h2 id="sheetTitle"></h2>
+  <div id="sheetBody"></div>
+</div>
+<div class="toast hidden" id="toast"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
