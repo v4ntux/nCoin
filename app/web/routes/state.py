@@ -27,8 +27,11 @@ async def profile_update(
     if body.name is not None:
         clean = body.name.strip()[:32]
         user.display_name = clean or None
-    if body.theme and body.theme in THEMES:
-        user.theme = body.theme
+    if body.theme:
+        t = body.theme.strip()
+        # пресет или кастомный hex #rrggbb
+        if t in THEMES or (t.startswith("#") and 4 <= len(t) <= 9):
+            user.theme = t[:16]
     await session.commit()
     return {
         "name": user.display_name or user.first_name or f"Player {user.id}",
@@ -59,10 +62,26 @@ async def state(
 
 
 @router.get("/news")
-async def news() -> dict:
-    from app.constants import NEWS
+async def news(session: AsyncSession = Depends(get_session)) -> dict:
+    from sqlalchemy import select
 
-    return {"items": NEWS}
+    from app.constants import NEWS
+    from app.db.models import News
+
+    rows = (
+        (
+            await session.execute(
+                select(News).where(News.active.is_(True)).order_by(News.sort, News.id.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if rows:
+        items = [{"tag": n.tag, "title": n.title, "text": n.text} for n in rows]
+    else:
+        items = NEWS  # дефолт, пока админ не добавил своих
+    return {"items": items}
 
 
 @router.get("/events")

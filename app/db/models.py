@@ -117,6 +117,8 @@ class WithdrawRequest(Base):
     amount_micro: Mapped[int] = mapped_column(BigInteger)  # USD * 1e6 (к выплате)
     fee_micro: Mapped[int] = mapped_column(BigInteger, default=0)
     amount_usd: Mapped[float] = mapped_column(Float)       # для сообщений/истории
+    method: Mapped[str] = mapped_column(String(16), default="")   # card | usdt | ...
+    details: Mapped[str] = mapped_column(String(128), default="")  # реквизиты
     status: Mapped[str] = mapped_column(  # pending | approved | declined
         String(16), default="pending", index=True
     )
@@ -153,6 +155,7 @@ class Trade(Base):
     seller_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
     price_micro: Mapped[int] = mapped_column(BigInteger)
     amount_coins: Mapped[int] = mapped_column(BigInteger)
+    taker_side: Mapped[str] = mapped_column(String(4), default="buy")  # buy | sell
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
@@ -227,3 +230,30 @@ class CustomTask(Base):
     sort: Mapped[int] = mapped_column(Integer, default=0)
     claims: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class News(Base):
+    """Карточка News & Events на главной, редактируется из админки."""
+
+    __tablename__ = "news"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tag: Mapped[str] = mapped_column(String(12), default="NEW")  # NEW | SOON | HOT
+    title: Mapped[str] = mapped_column(String(64))
+    text: Mapped[str] = mapped_column(String(256), default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Setting(Base):
+    """Singleton (id=1): контакты поддержки + конфиг VIP (цены/скидки), задаёт админ."""
+
+    __tablename__ = "settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    support_tg: Mapped[str] = mapped_column(String(64), default="")     # @username
+    support_email: Mapped[str] = mapped_column(String(64), default="")
+    support_text: Mapped[str] = mapped_column(String(256), default="")
+    # vip = {"1": {"price": 10, "discount": 25, "withdraws": 1}, ...}
+    vip: Mapped[dict] = mapped_column(JSON, default=dict)

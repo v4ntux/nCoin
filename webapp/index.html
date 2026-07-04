@@ -95,8 +95,6 @@
 
   <!-- ══════════ EXCHANGE ══════════ -->
   <section class="screen" id="screen-market">
-    <h1>Exchange</h1>
-    <div class="band-note" style="margin:-8px 2px 12px">P2P market — игроки торгуют друг с другом. Цену ставишь сам.</div>
     <div class="bal-chips">
       <div class="bal-chip glass-thin">
         <img class="coin-mini sm" src="img/mell-coin.png" alt="">
@@ -111,18 +109,23 @@
     <div class="card glass chart-card">
       <div class="chart-head">
         <div>
-          <div class="chart-price" id="exPrice">$0.00033</div>
-          <div class="chart-sub">Coin / USD</div>
+          <div class="chart-price" id="exPrice">$0.00</div>
+          <div class="chart-sub">MELL / USD</div>
         </div>
         <div class="chart-change" id="exChange">0%</div>
       </div>
-      <canvas id="exChart" height="120"></canvas>
-      <div class="chips tf" id="tfChips">
-        <button class="chip active" data-tf="day">1D</button>
-        <button class="chip" data-tf="month">1M</button>
-        <button class="chip" data-tf="all">All</button>
+      <canvas id="exChart" height="200"></canvas>
+      <div class="chart-ctrl">
+        <div class="chips tf" id="tfChips">
+          <button class="chip active" data-tf="day">1D</button>
+          <button class="chip" data-tf="month">1M</button>
+          <button class="chip" data-tf="all">All</button>
+        </div>
+        <div class="chips tf" id="ctypeChips">
+          <button class="chip active" data-ctype="candle">Candles</button>
+          <button class="chip" data-ctype="line">Line</button>
+        </div>
       </div>
-      <div class="band-note" id="exBand"></div>
     </div>
 
     <div class="seg glass-thin trade-seg" id="exSeg">
@@ -132,27 +135,28 @@
     <div class="card glass trade-form">
       <div class="field">
         <label>Price (USD per Coin)</label>
-        <input id="exPriceIn" type="number" step="0.00001" inputmode="decimal" placeholder="0.00033">
+        <input id="exPriceIn" type="number" step="0.000001" inputmode="decimal" placeholder="0.00">
       </div>
       <div class="field">
         <label>Amount (Coin)</label>
         <input id="exAmountIn" type="number" inputmode="numeric" placeholder="min 100">
       </div>
       <div class="trade-total"><span>Total</span><b id="exTotal">0 USD</b></div>
-      <div class="trade-total"><span>Fee (<span id="exFeePct">2</span>% for sellers)</span><b id="exFee">0 USD</b></div>
+      <div class="trade-total"><span>Fee (<span id="exFeePct">2</span>% seller)</span><b id="exFee">0 USD</b></div>
       <button class="btn-primary buy" id="exSubmit">Buy Coin</button>
     </div>
-
-    <div class="list-head"><span>Order book</span><span id="exSpread"></span></div>
-    <div class="card glass book" id="exBook"><div class="book-col" id="exBids"></div><div class="book-col" id="exAsks"></div></div>
 
     <div class="list-head"><span>My open orders</span></div>
     <div class="list" id="exMyOrders"></div>
 
-    <div class="list-head"><span>Recent trades</span></div>
+    <div class="list-head"><span id="exBookTitle">Sell orders</span></div>
+    <div class="list" id="exOrders"></div>
+    <button class="btn-secondary hidden" id="exLoadMore" style="margin-bottom:12px">Load more</button>
+
+    <div class="list-head"><span id="exTradesTitle">Recent buys</span></div>
     <div class="list" id="exTrades"></div>
 
-    <div class="list-head"><span class="row-ic" data-ic="crown">Top holders</span></div>
+    <div class="list-head"><span class="row-ic" data-ic="crown">Top 7 holders</span></div>
     <div class="list" id="exHolders"></div>
   </section>
 
@@ -231,6 +235,7 @@
   <section class="screen" id="screen-wallet">
     <div class="wallet-hero glass">
       <div class="hero-bg" id="heroBg"></div>
+      <button class="hero-edit" id="qEdit" aria-label="Edit profile"><i data-ic="edit"></i></button>
       <div class="hero-body">
         <div class="ava big" id="avaBig">N</div>
         <div class="prof-name" id="profName">…</div>
@@ -243,13 +248,10 @@
       </div>
     </div>
 
-    <div class="quick-grid six">
+    <div class="quick-grid">
       <button class="quick glass" id="qDeposit"><i data-ic="plus"></i>Deposit</button>
       <button class="quick glass" id="qWithdraw"><i data-ic="down"></i>Withdraw</button>
       <button class="quick glass" id="qSend"><i data-ic="send"></i>Send</button>
-      <button class="quick glass" id="qEdit"><i data-ic="edit"></i>Edit</button>
-      <button class="quick glass" id="qSupport"><i data-ic="chat"></i>Support</button>
-      <button class="quick glass" id="qStats"><i data-ic="stats"></i>Stats</button>
     </div>
 
     <div class="card glass plan-card">
@@ -264,7 +266,8 @@
       </div>
     </div>
 
-    <div class="stats-grid hidden" id="statsGrid">
+    <div class="list-head"><span class="row-ic" data-ic="stats">Statistics</span></div>
+    <div class="stats-grid" id="statsGrid">
       <div class="stat glass"><b id="stMined">0</b><span>Mined</span></div>
       <div class="stat glass"><b id="stTapped">0</b><span>Tapped</span></div>
       <div class="stat glass"><b id="stRef">0</b><span>Ref income</span></div>
@@ -272,7 +275,7 @@
     </div>
 
     <div class="soon glass-thin" id="sendLimitNote"></div>
-    <div class="soon glass-thin">TON Keeper — soon</div>
+    <button class="btn-secondary" id="qSupport" style="margin-bottom:12px"><span class="row-ic" data-ic="chat">Support</span></button>
   </section>
 </main>
 

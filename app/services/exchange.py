@@ -24,6 +24,7 @@ from app.constants import (
 from app.core.clock import ts, utcnow
 from app.core.fees import fee_amount, fee_rate
 from app.db.models import MarketConfig, Order, Trade, User
+from app.services import settings_store
 from app.services.economy import credit, credit_usd
 from app.services.errors import GameError
 
@@ -131,6 +132,10 @@ async def place_order(
 
 async def _match(session: AsyncSession, order: Order, taker: User) -> tuple[int, int]:
     """Матчит новый ордер против стакана. Возвращает (заполнено, ср. цена micro)."""
+    from app.services import settings_store
+
+    _s = await settings_store.load(session)
+    _rules = settings_store.vip_rules(_s)
     opp_side = "sell" if order.side == "buy" else "buy"
     if order.side == "buy":
         price_ok = Order.price_micro <= order.price_micro
@@ -182,7 +187,8 @@ async def _match(session: AsyncSession, order: Order, taker: User) -> tuple[int,
             {"price": maker.price_micro}, count_earned=False,
         )
         await credit_usd(session, seller, trade_micro, "trade_sell", {"amount": take})
-        fee = fee_amount(trade_micro, "trade", seller.vip_tier)
+        _mult = settings_store.discount_mult(_rules, seller.vip_tier)
+        fee = fee_amount(trade_micro, "trade", seller.vip_tier, _mult)
         if fee > 0:
             await credit_usd(session, seller, -fee, "fee_trade")
 
@@ -202,6 +208,7 @@ async def _match(session: AsyncSession, order: Order, taker: User) -> tuple[int,
                 seller_id=seller.id,
                 price_micro=maker.price_micro,
                 amount_coins=take,
+                taker_side=order.side,
             )
         )
 
@@ -238,10 +245,20 @@ async def cancel_order(session: AsyncSession, user: User, order_id: int) -> dict
 # ---------------------------------------------------------------- маркетмейкер
 
 
+def _human_amount() -> int:
+    """«Живой» объём: круглые числа (200, 350, 500…), не палевные 1753."""
+    base = random.choice([50, 100, 150, 200, 250, 300, 350, 400, 500, 600, 750, 1000])
+    # иногда чуть-чуть шума, но остаётся ровным (кратно 10)
+    return base + random.choice([0, 0, 0, 10, 20, 50])
+
+
 async def fake_trade(
     session: AsyncSession, price_micro: int, amount: int | None = None
 ) -> None:
-    """Сделка системного юзера сам-с-собой: двигает last price и рисует график."""
+    """Сделка маркетмейкера сам-с-собой: двигает last price, рисует график.
+
+    Объёмы человечные и круглые, сторона случайна — выглядит как живые сделки.
+    """
     session.add(
         Trade(
             buy_order_id=None,
@@ -249,7 +266,8 @@ async def fake_trade(
             buyer_id=MARKET_MAKER_ID,
             seller_id=MARKET_MAKER_ID,
             price_micro=max(1, price_micro),
-            amount_coins=amount or random.randint(150, 600),
+            amount_coins=amount or _human_amount(),
+            taker_side=random.choice(["buy", "sell"]),
         )
     )
 
@@ -274,7 +292,7 @@ async def keep_price_in_band(session: AsyncSession) -> bool:
     if rel <= 0.015:
         if random.random() < 0.5:
             jitter = int(target * random.uniform(-0.006, 0.006))
-            await fake_trade(session, target + jitter, random.randint(120, 500))
+            await fake_trade(session, target + jitter)
             return True
         return False
 
@@ -286,8 +304,13 @@ async def keep_price_in_band(session: AsyncSession) -> bool:
         step = 1 if gap > 0 else -1
     # джиттер, чтобы не было идеально прямой линии
     new_price = last + step + int(target * random.uniform(-0.004, 0.004))
-    await fake_trade(session, max(1, new_price), random.randint(150, 700))
+    await fake_trade(session, max(1, new_price))
     return True
+
+
+async def rate_usd(session: AsyncSession) -> float:
+    """Текущий курс: сколько USD стоит 1 Coin (по последней цене рынка)."""
+    return (await last_price_micro(session)) / USD_MICRO
 
 
 # ---------------------------------------------------------------- график / вид
@@ -299,14 +322,21 @@ _TF = {
 }
 
 
-async def chart(session: AsyncSession, tf: str) -> list[dict]:
-    """Точки графика по бакетам: час для дня, день для месяца/всего времени."""
+async def candles(session: AsyncSession, tf: str) -> list[dict]:
+    """OHLC-свечи по бакетам для трейдерского графика.
+
+    open/close берём как первую/последнюю цену в бакете (по id сделки),
+    high/low — max/min. Возвращает [{t, o, h, l, c, v}].
+    """
     fmt, span = _TF.get(tf, _TF["day"])
     bucket = func.strftime(fmt, Trade.created_at).label("bucket")
     q = (
         select(
             bucket,
-            func.avg(Trade.price_micro),
+            func.min(Trade.price_micro),
+            func.max(Trade.price_micro),
+            func.min(Trade.id),
+            func.max(Trade.id),
             func.coalesce(func.sum(Trade.amount_coins), 0),
         )
         .group_by("bucket")
@@ -315,29 +345,88 @@ async def chart(session: AsyncSession, tf: str) -> list[dict]:
     if span is not None:
         q = q.where(Trade.created_at >= utcnow() - span)
     rows = (await session.execute(q)).all()
-    points = [
-        {"t": b, "p": round(p / USD_MICRO, 6), "v": int(v)} for b, p, v in rows
-    ]
-    if not points:
+
+    # цены первой/последней сделки в бакете (open/close)
+    prices: dict[int, int] = {}
+    ids: set[int] = set()
+    for _, _, _, first_id, last_id, _ in rows:
+        ids.add(first_id)
+        ids.add(last_id)
+    if ids:
+        for tid, pm in (
+            await session.execute(
+                select(Trade.id, Trade.price_micro).where(Trade.id.in_(ids))
+            )
+        ).all():
+            prices[tid] = pm
+
+    out = []
+    for b, lo, hi, first_id, last_id, vol in rows:
+        o = prices.get(first_id, lo)
+        c = prices.get(last_id, hi)
+        out.append(
+            {
+                "t": b,
+                "o": round(o / USD_MICRO, 6),
+                "h": round(hi / USD_MICRO, 6),
+                "l": round(lo / USD_MICRO, 6),
+                "c": round(c / USD_MICRO, 6),
+                "v": int(vol),
+            }
+        )
+    if not out:
         cfg = await get_market_config(session)
-        points = [{"t": "", "p": _usd(cfg.official_micro), "v": 0}]
-    return points
+        p = _usd(cfg.official_micro)
+        out = [{"t": "", "o": p, "h": p, "l": p, "c": p, "v": 0}]
+    return out
 
 
-async def _book_side(session: AsyncSession, side: str, limit: int = 5) -> list[dict]:
+async def orders_page(
+    session: AsyncSession, side: str, viewer_id: int, offset: int = 0, limit: int = 12
+) -> dict:
+    """Индивидуальные открытые ордера одной стороны (для кликабельного стакана).
+
+    buy — лучшие цены сверху (desc), sell — дешевле сверху (asc). Чужие ордера,
+    свои показываем в «My orders». Возвращает {items, total, has_more}.
+    """
     rest = Order.amount_coins - Order.filled_coins
+    base = (
+        select(Order, User)
+        .join(User, Order.user_id == User.id)
+        .where(
+            Order.status == "open",
+            Order.side == side,
+            Order.user_id != viewer_id,
+            Order.user_id != MARKET_MAKER_ID,
+        )
+    )
+    total = (
+        await session.execute(
+            select(func.count(Order.id)).where(
+                Order.status == "open",
+                Order.side == side,
+                Order.user_id != viewer_id,
+                Order.user_id != MARKET_MAKER_ID,
+            )
+        )
+    ).scalar_one()
+    order_by = Order.price_micro.desc() if side == "buy" else Order.price_micro.asc()
     rows = (
         await session.execute(
-            select(Order.price_micro, func.sum(rest))
-            .where(Order.status == "open", Order.side == side)
-            .group_by(Order.price_micro)
-            .order_by(
-                Order.price_micro.desc() if side == "buy" else Order.price_micro.asc()
-            )
-            .limit(limit)
+            base.order_by(order_by, Order.id.asc()).offset(offset).limit(limit)
         )
     ).all()
-    return [{"price": _usd(p), "amount": int(a)} for p, a in rows]
+    items = [
+        {
+            "id": o.id,
+            "side": o.side,
+            "price": _usd(o.price_micro),
+            "amount": o.amount_coins - o.filled_coins,
+            "name": u.first_name or u.username or f"Player {u.id}",
+        }
+        for o, u in rows
+    ]
+    return {"items": items, "total": int(total), "has_more": offset + limit < total}
 
 
 async def market_view(session: AsyncSession, user: User) -> dict:
@@ -371,25 +460,25 @@ async def market_view(session: AsyncSession, user: User) -> dict:
                 select(User)
                 .where(User.banned.is_(False), User.id != MARKET_MAKER_ID)
                 .order_by(User.coins.desc())
-                .limit(5)
+                .limit(7)
             )
         )
         .scalars()
         .all()
     )
+    s = await settings_store.load(session)
+    mult = settings_store.discount_mult(settings_store.vip_rules(s), user.vip_tier)
     return {
         "price": _usd(last),
-        "official": _usd(cfg.official_micro),
-        "band_min": _usd(cfg.day_min_micro),
-        "band_max": _usd(cfg.day_max_micro),
         "change_pct": round(change, 2),
         "coins": user.coins,
         "usd": _usd(user.usd_micro),
         "min_order": ORDER_MIN_COINS,
-        "fee_pct": round(fee_rate("trade", user.vip_tier) * 100, 2),
+        "fee_pct": round(fee_rate("trade", user.vip_tier, mult) * 100, 2),
         "frozen": user.frozen,
-        "bids": await _book_side(session, "buy"),
-        "asks": await _book_side(session, "sell"),
+        # кликабельный стакан — индивидуальные ордера, первая страница
+        "orders_buy": await orders_page(session, "buy", user.id),
+        "orders_sell": await orders_page(session, "sell", user.id),
         "my_orders": [
             {
                 "id": o.id,
@@ -405,8 +494,8 @@ async def market_view(session: AsyncSession, user: User) -> dict:
                 "t": ts(t.created_at),
                 "price": _usd(t.price_micro),
                 "amount": t.amount_coins,
-                "buy": t.buyer_id == user.id,
-                "market": t.buyer_id == MARKET_MAKER_ID,
+                "side": t.taker_side,
+                "mine": user.id in (t.buyer_id, t.seller_id),
             }
             for t in trades
         ],

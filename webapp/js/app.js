@@ -436,6 +436,8 @@ function tickEventTimers() {
 let exSide = "buy";
 let exData = null;
 let exTf = "day";
+let exCtype = "candle";
+let exOffset = 0;
 
 $("exSeg").addEventListener("click", (e) => {
   const btn = e.target.closest(".seg-btn");
@@ -445,12 +447,14 @@ $("exSeg").addEventListener("click", (e) => {
   const submit = $("exSubmit");
   submit.textContent = exSide === "buy" ? "Buy Coin" : "Sell Coin";
   submit.className = "btn-primary " + exSide;
+  $("exBookTitle").textContent = exSide === "buy" ? "Buy orders" : "Sell orders";
+  $("exTradesTitle").textContent = exSide === "buy" ? "Recent buys" : "Recent sells";
   recalcTrade();
+  if (exData) { renderOrders(); renderTrades(); }
 });
 function recalcTrade() {
   const total = (+$("exPriceIn").value || 0) * (+$("exAmountIn").value || 0);
   $("exTotal").textContent = fmtUsd(total) + " USD";
-  // комиссия платит продавец с выручки
   const feePct = exData ? exData.fee_pct : 0;
   const fee = exSide === "sell" ? (total * feePct) / 100 : 0;
   $("exFee").textContent = fmtUsd(fee) + " USD";
@@ -464,21 +468,31 @@ $("tfChips").addEventListener("click", (e) => {
   document.querySelectorAll("#tfChips .chip").forEach((c) => c.classList.toggle("active", c === chip));
   loadChart();
 });
+$("ctypeChips").addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip");
+  if (!chip) return;
+  exCtype = chip.dataset.ctype;
+  document.querySelectorAll("#ctypeChips .chip").forEach((c) => c.classList.toggle("active", c === chip));
+  if (exCandles) drawChart(exCandles);
+});
 
+let exCandles = null;
 async function loadChart() {
   try {
     const r = await api("/exchange/chart?tf=" + exTf);
-    drawChart(r.points);
+    exCandles = r.candles;
+    drawChart(exCandles);
   } catch {}
 }
 
 $("exSubmit").addEventListener("click", async () => {
+  await placeOrder(exSide, +$("exPriceIn").value, +$("exAmountIn").value);
+  $("exAmountIn").value = "";
+});
+
+async function placeOrder(side, price, amount) {
   try {
-    const r = await api("/exchange/order", {
-      side: exSide,
-      price_usd: +$("exPriceIn").value,
-      amount: +$("exAmountIn").value,
-    });
+    const r = await api("/exchange/order", { side, price_usd: price, amount });
     notifyHaptic("success");
     toast(
       r.filled > 0
@@ -486,51 +500,150 @@ $("exSubmit").addEventListener("click", async () => {
         : "Order placed in the book",
       "ok"
     );
-    $("exAmountIn").value = "";
     if (S) S.user.coins = r.coins;
     loadMarket();
     loadChart();
   } catch (e) { toast(e.message, "err"); }
-});
+}
 
-function drawChart(points) {
+/* ── candlestick + line chart ── */
+function drawChart(candles) {
   const cv = $("exChart");
   const dpr = window.devicePixelRatio || 1;
-  const w = cv.clientWidth || 300;
-  const h = 120;
+  const w = cv.clientWidth || 320;
+  const h = 200;
   cv.width = w * dpr;
   cv.height = h * dpr;
   const ctx = cv.getContext("2d");
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, w, h);
+  if (!candles || !candles.length) return;
+  const cs = candles.length === 1 ? [candles[0], candles[0]] : candles;
 
-  const ps = points.length >= 2 ? points : [{ p: points[0]?.p || 0 }, { p: points[0]?.p || 0 }];
-  const vals = ps.map((x) => x.p);
-  let min = Math.min(...vals), max = Math.max(...vals);
-  if (min === max) { min *= 0.98; max *= 1.02; }
-  const px = (i) => 6 + (i / (ps.length - 1)) * (w - 12);
-  const py = (v) => 8 + (1 - (v - min) / (max - min)) * (h - 20);
+  const highs = cs.map((c) => c.h), lows = cs.map((c) => c.l);
+  let max = Math.max(...highs), min = Math.min(...lows);
+  if (min === max) { min *= 0.995; max *= 1.005; }
+  const pad = (max - min) * 0.12 || max * 0.02;
+  max += pad; min -= pad;
+  const PL = 4, PR = 4, PT = 8, PB = 8;
+  const iw = w - PL - PR;
+  const py = (v) => PT + (1 - (v - min) / (max - min)) * (h - PT - PB);
+  const up = "#3ddc84", down = "#ff5d73";
 
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, "rgba(232,193,90,0.28)");
-  grad.addColorStop(1, "rgba(232,193,90,0)");
-  ctx.beginPath();
-  ps.forEach((pt, i) => (i ? ctx.lineTo(px(i), py(pt.p)) : ctx.moveTo(px(0), py(pt.p))));
-  ctx.strokeStyle = "#e8c15a";
-  ctx.lineWidth = 2;
-  ctx.lineJoin = "round";
-  ctx.stroke();
-  ctx.lineTo(px(ps.length - 1), h);
-  ctx.lineTo(px(0), h);
-  ctx.closePath();
-  ctx.fillStyle = grad;
-  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+  ctx.lineWidth = 1;
+  for (let g = 0; g <= 3; g++) {
+    const yy = PT + (g / 3) * (h - PT - PB);
+    ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(w, yy); ctx.stroke();
+  }
 
-  const lx = px(ps.length - 1), ly = py(ps.at(-1).p);
-  ctx.beginPath();
-  ctx.arc(lx, ly, 3.2, 0, Math.PI * 2);
-  ctx.fillStyle = "#f6dc8d";
-  ctx.fill();
+  if (exCtype === "line") {
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, "rgba(232,193,90,0.28)");
+    grad.addColorStop(1, "rgba(232,193,90,0)");
+    const px = (i) => PL + (cs.length === 1 ? iw / 2 : (i / (cs.length - 1)) * iw);
+    ctx.beginPath();
+    cs.forEach((c, i) => (i ? ctx.lineTo(px(i), py(c.c)) : ctx.moveTo(px(0), py(c.c))));
+    ctx.strokeStyle = "#e8c15a"; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.stroke();
+    ctx.lineTo(px(cs.length - 1), h); ctx.lineTo(px(0), h); ctx.closePath();
+    ctx.fillStyle = grad; ctx.fill();
+    return;
+  }
+
+  const n = cs.length;
+  const slot = iw / n;
+  const bw = Math.max(2, Math.min(14, slot * 0.6));
+  cs.forEach((c, i) => {
+    const cx = PL + slot * (i + 0.5);
+    const col = c.c >= c.o ? up : down;
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(cx, py(c.h)); ctx.lineTo(cx, py(c.l)); ctx.stroke();
+    const yO = py(c.o), yC = py(c.c);
+    const top = Math.min(yO, yC), bh = Math.max(1, Math.abs(yC - yO));
+    ctx.fillRect(cx - bw / 2, top, bw, bh);
+  });
+}
+
+/* ── order book (clickable) + trades filtered by side ── */
+function renderOrders() {
+  const page = exSide === "buy" ? exData.orders_buy : exData.orders_sell;
+  const list = $("exOrders");
+  if (!page.items.length) {
+    list.innerHTML = `<div class="item"><div class="item-mid" style="text-align:center;color:var(--txt-dim)">No ${exSide} orders yet</div></div>`;
+    $("exLoadMore").classList.add("hidden");
+    return;
+  }
+  list.innerHTML = page.items.map(orderRowHtml).join("");
+  bindOrderRows(list);
+  exOffset = page.items.length;
+  $("exLoadMore").classList.toggle("hidden", !page.has_more);
+}
+function orderRowHtml(o) {
+  const col = o.side === "buy" ? "var(--green)" : "var(--red)";
+  return `
+    <div class="item" data-oid="${o.id}" data-o='${JSON.stringify(o).replace(/'/g, "&#39;")}'>
+      <div class="item-mid">
+        <div class="item-name" style="color:${col}">${fmtPrice(o.price)}</div>
+        <div class="item-sub">${fmt(o.amount)} Coin · ${o.name}</div>
+      </div>
+      <button class="item-btn ${o.side === "buy" ? "" : "gold"}">${o.side === "buy" ? "Sell" : "Buy"}</button>
+    </div>`;
+}
+function bindOrderRows(list) {
+  list.querySelectorAll("[data-oid]").forEach((el) => {
+    if (el.dataset.bound) return;
+    el.dataset.bound = "1";
+    el.addEventListener("click", () => takeOrderSheet(JSON.parse(el.dataset.o)));
+  });
+}
+$("exLoadMore").addEventListener("click", async () => {
+  try {
+    const r = await api(`/exchange/orders?side=${exSide}&offset=${exOffset}`);
+    const list = $("exOrders");
+    list.insertAdjacentHTML("beforeend", r.items.map(orderRowHtml).join(""));
+    bindOrderRows(list);
+    exOffset += r.items.length;
+    $("exLoadMore").classList.toggle("hidden", !r.has_more);
+  } catch (e) { toast(e.message, "err"); }
+});
+
+// клик по чужому ордеру → модалка: сколько взять по этой цене (беру противоположную сторону)
+function takeOrderSheet(o) {
+  const myside = o.side === "buy" ? "sell" : "buy";
+  const verb = myside === "buy" ? "Buy" : "Sell";
+  openSheet(`${verb} at ${fmtPrice(o.price)}`, `
+    <div class="hint">${o.name} ${o.side === "buy" ? "wants to buy" : "is selling"} <b>${fmt(o.amount)}</b> Coin @ ${fmtPrice(o.price)}.</div>
+    <div class="field"><label>Amount to ${verb.toLowerCase()} (Coin)</label>
+      <input id="tkoAmount" type="number" inputmode="numeric" value="${o.amount}"></div>
+    <div class="trade-total"><span>Total</span><b id="tkoTotal">${fmtUsd(o.amount * o.price)} USD</b></div>
+    <button class="btn-primary ${myside}" id="tkoGo">${verb} Coin</button>`);
+  $("tkoAmount").addEventListener("input", () => {
+    $("tkoTotal").textContent = fmtUsd((+$("tkoAmount").value || 0) * o.price) + " USD";
+  });
+  $("tkoGo").addEventListener("click", async () => {
+    const amt = Math.min(+$("tkoAmount").value || 0, o.amount);
+    closeSheet();
+    await placeOrder(myside, o.price, amt);
+  });
+}
+
+function renderTrades() {
+  const rows = exData.trades.filter((t) => t.side === exSide);
+  $("exTrades").innerHTML = rows.length
+    ? rows.map((t) => {
+        const d = new Date(t.t * 1000);
+        const hh = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+        const col = t.side === "buy" ? "var(--green)" : "var(--red)";
+        return `
+      <div class="item">
+        <div class="item-mid">
+          <div class="item-name" style="color:${col}">${fmt(t.amount)} Coin</div>
+          <div class="item-sub">@ ${fmtPrice(t.price)} · ${hh}</div>
+        </div>
+        <div class="item-sub">${t.mine ? "you" : t.side}</div>
+      </div>`;
+      }).join("")
+    : `<div class="item"><div class="item-mid" style="text-align:center;color:var(--txt-dim)">No ${exSide} trades yet</div></div>`;
 }
 
 async function loadMarket() {
@@ -544,22 +657,12 @@ async function loadMarket() {
     const ch = $("exChange");
     ch.textContent = (r.change_pct >= 0 ? "+" : "") + r.change_pct + "%";
     ch.className = "chart-change " + (r.change_pct >= 0 ? "up" : "down");
-    if (!$("exPriceIn").value) $("exPriceIn").placeholder = fmtPx(r.official);
-    $("exBand").textContent =
-      `Today's band: ${fmtPx(r.band_min)} – ${fmtPx(r.band_max)} USD · official ${fmtPx(r.official)}`;
+    if (!$("exPriceIn").value) $("exPriceIn").placeholder = fmtPx(r.price);
     recalcTrade();
     loadChart();
 
-    const bids = r.bids.map((b) => `<div class="book-row bid"><span class="p">${fmtPx(b.price)}</span><span>${fmt(b.amount)}</span></div>`).join("");
-    const asks = r.asks.map((a) => `<div class="book-row ask"><span class="p">${fmtPx(a.price)}</span><span>${fmt(a.amount)}</span></div>`).join("");
-    $("exBids").innerHTML = `<div class="book-empty">BUY</div>` + (bids || `<div class="book-empty">no bids</div>`);
-    $("exAsks").innerHTML = `<div class="book-empty">SELL</div>` + (asks || `<div class="book-empty">no asks</div>`);
-    $("exSpread").textContent = r.bids[0] && r.asks[0] ? `spread ${fmtPx(r.asks[0].price - r.bids[0].price)}` : "";
-
     $("exMyOrders").innerHTML = r.my_orders.length
-      ? r.my_orders
-          .map(
-            (o) => `
+      ? r.my_orders.map((o) => `
         <div class="item">
           <div class="item-ic">${ic(o.side === "buy" ? "down" : "up")}</div>
           <div class="item-mid">
@@ -567,50 +670,24 @@ async function loadMarket() {
             <div class="item-sub">@ ${fmtPrice(o.price)} · filled ${fmt(o.filled)}</div>
           </div>
           <button class="item-btn danger" data-cancel="${o.id}">Cancel</button>
-        </div>`
-          )
-          .join("")
+        </div>`).join("")
       : `<div class="item"><div class="item-mid" style="text-align:center;color:var(--txt-dim)">No open orders</div></div>`;
     $("exMyOrders").querySelectorAll("[data-cancel]").forEach((b) =>
       b.addEventListener("click", async () => {
-        try {
-          await api("/exchange/cancel", { id: +b.dataset.cancel });
-          toast("Order cancelled", "ok");
-          loadMarket();
-        } catch (e) { toast(e.message, "err"); }
+        try { await api("/exchange/cancel", { id: +b.dataset.cancel }); toast("Order cancelled", "ok"); loadMarket(); }
+        catch (e) { toast(e.message, "err"); }
       })
     );
 
-    $("exTrades").innerHTML = r.trades.length
-      ? r.trades
-          .map((t) => {
-            const d = new Date(t.t * 1000);
-            const hh = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
-            return `
-        <div class="item">
-          <div class="item-ic">${ic("chart")}</div>
-          <div class="item-mid">
-            <div class="item-name">${fmt(t.amount)} Coin</div>
-            <div class="item-sub">@ ${fmtPrice(t.price)} · ${hh}</div>
-          </div>
-          <div class="item-sub" style="color:${t.buy ? "var(--green)" : "var(--txt-dim)"}">${t.buy ? "you bought" : "trade"}</div>
-        </div>`;
-          })
-          .join("")
-      : `<div class="item"><div class="item-mid" style="text-align:center;color:var(--txt-dim)">No trades yet — be the first</div></div>`;
+    renderOrders();
+    renderTrades();
 
-    $("exHolders").innerHTML = r.holders
-      .map(
-        (h, i) => `
+    $("exHolders").innerHTML = r.holders.map((h, i) => `
       <div class="item">
         <div class="rank-n ${i < 3 ? "top" + (i + 1) : ""}">${i + 1}</div>
-        <div class="item-mid">
-          <div class="item-name">${h.name}${h.me ? " · you" : ""}</div>
-        </div>
+        <div class="item-mid"><div class="item-name">${h.name}${h.me ? " · you" : ""}</div></div>
         <div class="item-sub mono">${fmt(h.coins)}</div>
-      </div>`
-      )
-      .join("");
+      </div>`).join("");
     mountIcons($("screen-market"));
   } catch (e) { toast(e.message, "err"); }
 }
@@ -918,9 +995,8 @@ async function loadWallet() {
     $("qWithdraw").onclick = () => withdrawSheet(w);
     $("qDeposit").onclick = () => topupSheet();
     $("qEdit").onclick = () => editProfileSheet(p);
-    $("qSupport").onclick = () => supportSheet();
+    $("qSupport").onclick = () => supportSheet(w);
     $("planUpgrade").onclick = () => plansSheet(w);
-    $("qStats").onclick = () => $("statsGrid").classList.toggle("hidden");
   } catch (e) { toast(e.message, "err"); }
 }
 
@@ -932,8 +1008,12 @@ const THEMES = {
   emerald: ["#0f4a30", "#58d68d"],
   mono: ["#2a2a2e", "#c9ccd4"],
 };
+function themeDeep(theme) {
+  if (theme && theme.startsWith("#")) return theme; // кастомный цвет
+  return (THEMES[theme] || THEMES.gold)[0];
+}
 function applyTheme(theme, photo) {
-  const [deep] = THEMES[theme] || THEMES.gold;
+  const deep = themeDeep(theme);
   const bg = $("heroBg");
   if (photo) bg.style.backgroundImage = `url(${photo})`;
   else bg.style.backgroundImage = `radial-gradient(circle at 50% 0%, ${deep}, #0b0a08 70%)`;
@@ -944,7 +1024,6 @@ function topupSheet() {
   openSheet("Top up balance", `
     <div class="pay-methods" id="payMethods">
       <button class="pay glass-thin" data-m="visa">${ic("card")}<span>Visa / MC</span></button>
-      <button class="pay glass-thin" data-m="humo">${ic("card")}<span>Humo / Uzcard</span></button>
       <button class="pay glass-thin" data-m="crypto">${ic("crypto")}<span>USDT crypto</span></button>
     </div>
     <div class="field"><label>Amount (USD)</label><input id="tuAmount" type="number" step="1" inputmode="decimal" placeholder="10"></div>
@@ -975,19 +1054,33 @@ function editProfileSheet(p) {
   const themeBtns = Object.keys(THEMES)
     .map((k) => `<button class="theme-dot ${p.theme === k ? "active" : ""}" data-theme="${k}" style="background:linear-gradient(135deg,${THEMES[k][1]},${THEMES[k][0]})"></button>`)
     .join("");
+  const custom = p.theme && p.theme.startsWith("#") ? p.theme : "#e8c15a";
   openSheet("Edit profile", `
     <div class="field"><label>Display name</label><input id="epName" maxlength="32" placeholder="${p.name}" value="${p.name}"></div>
-    <div class="field"><label>Profile theme</label><div class="theme-row" id="epThemes">${themeBtns}</div></div>
-    <div class="hint">Avatar is taken from your Telegram photo automatically.</div>
+    <div class="field"><label>Background</label>
+      <div class="theme-row" id="epThemes">${themeBtns}
+        <label class="theme-dot custom" style="background:${custom}">
+          <input type="color" id="epColor" value="${custom}" style="opacity:0;width:100%;height:100%">
+        </label>
+      </div>
+    </div>
+    <div class="hint">Pick a preset or your own color. Avatar comes from your Telegram photo.</div>
     <button class="btn-primary" id="epSave">Save</button>`);
   let theme = p.theme;
-  $("epThemes").querySelectorAll(".theme-dot").forEach((b) =>
+  $("epThemes").querySelectorAll(".theme-dot[data-theme]").forEach((b) =>
     b.addEventListener("click", () => {
       theme = b.dataset.theme;
-      $("epThemes").querySelectorAll(".theme-dot").forEach((x) => x.classList.toggle("active", x === b));
+      $("epThemes").querySelectorAll(".theme-dot").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
       applyTheme(theme, photoUrl());
     })
   );
+  $("epColor").addEventListener("input", (e) => {
+    theme = e.target.value;
+    e.target.parentElement.style.background = theme;
+    $("epThemes").querySelectorAll(".theme-dot[data-theme]").forEach((x) => x.classList.remove("active"));
+    applyTheme(theme, photoUrl());
+  });
   $("epSave").addEventListener("click", async () => {
     try {
       const r = await api("/profile/update", { name: $("epName").value, theme });
@@ -1000,19 +1093,32 @@ function editProfileSheet(p) {
   });
 }
 
-/* ───────── support ───────── */
-function supportSheet() {
+/* ───────── support (контакты из админки) ───────── */
+function supportSheet(w) {
+  const s = (w && w.support) || {};
+  let buttons = "";
+  if (s.tg) {
+    const u = s.tg.replace(/^@/, "");
+    buttons += `<button class="btn-primary" id="supTg">Message @${u}</button>`;
+  }
+  if (s.email) {
+    buttons += `<button class="btn-secondary" id="supMail" style="margin-top:8px">Email ${s.email}</button>`;
+  }
+  if (!buttons) {
+    buttons = `<button class="btn-primary" id="supBot">Open bot chat</button>`;
+  }
   openSheet("Support", `
-    <div class="hint" style="font-size:14px;text-align:center">
-      Need help, found a bug, or a payment issue?<br><br>
-      Write to the bot chat — an admin will reply.<br>
-      Your id is shown in the profile, mention it in your message.
-    </div>
-    <button class="btn-primary" id="supOpen">Open bot chat</button>
+    <div class="hint" style="font-size:14px;text-align:center">${s.text || "Need help? Contact us."}<br><br>Your id: <b>${S ? S.user.id : ""}</b> — mention it.</div>
+    ${buttons}
     <button class="btn-secondary" id="supClose" style="margin-top:8px">Close</button>`);
-  $("supOpen").addEventListener("click", () => {
-    tg?.close ? tg.close() : toast("Open the bot in Telegram");
+  if (s.tg) $("supTg").addEventListener("click", () => {
+    const url = "https://t.me/" + s.tg.replace(/^@/, "");
+    tg?.openTelegramLink ? tg.openTelegramLink(url) : window.open(url);
   });
+  if (s.email) $("supMail").addEventListener("click", () => {
+    tg?.openLink ? tg.openLink("mailto:" + s.email) : (window.location.href = "mailto:" + s.email);
+  });
+  if (!s.tg && !s.email) $("supBot").addEventListener("click", () => (tg?.close ? tg.close() : toast("Open the bot")));
   $("supClose").addEventListener("click", closeSheet);
 }
 
@@ -1061,13 +1167,36 @@ function withdrawSheet(w) {
     $("wdGoPlans").addEventListener("click", () => plansSheet(w));
     return;
   }
+  const methods = (w.withdraw_methods || []).map(
+    (m) => `<button class="pay glass-thin" data-wm="${m.key}" data-field="${m.field}">${ic("card")}<span>${m.name}</span></button>`
+  ).join("");
   openSheet("Withdraw USD", `
+    <div class="hint">Where do you want to withdraw?</div>
+    <div class="pay-methods three" id="wdMethods">${methods}</div>
     <div class="field"><label>Amount (USD)</label><input id="wdAmount" type="number" step="1" inputmode="decimal" placeholder="min ${fmt(w.withdraw_min_usd)}"></div>
-    <div class="hint">Balance: ${fmtUsd(w.usd)} USD · fee ${w.fees.withdraw}% · slots this week: ${w.withdraw_used}/${w.withdraw_slots}.<br>Sell Coin on the Exchange to get USD.</div>
-    <button class="btn-primary" id="wdSend">Request withdraw</button>`);
+    <div class="field"><label id="wdDetailsLabel">Details</label><input id="wdDetails" placeholder="Select a method first" disabled></div>
+    <div class="hint">Balance: ${fmtUsd(w.usd)} USD · fee ${w.fees.withdraw}% · slots: ${w.withdraw_used}/${w.withdraw_slots}. Sell Coin on the Exchange to get USD.</div>
+    <button class="btn-primary" id="wdSend" disabled>Choose method</button>`);
+  let method = "";
+  $("wdMethods").querySelectorAll(".pay").forEach((b) =>
+    b.addEventListener("click", () => {
+      method = b.dataset.wm;
+      $("wdMethods").querySelectorAll(".pay").forEach((x) => x.classList.toggle("active", x === b));
+      $("wdDetailsLabel").textContent = b.dataset.field;
+      $("wdDetails").disabled = false;
+      $("wdDetails").placeholder = b.dataset.field;
+      $("wdSend").disabled = false;
+      $("wdSend").textContent = "Request withdraw";
+    })
+  );
   $("wdSend").addEventListener("click", async () => {
+    if (!method) return;
     try {
-      const r = await api("/wallet/withdraw", { amount_usd: +$("wdAmount").value });
+      const r = await api("/wallet/withdraw", {
+        amount_usd: +$("wdAmount").value,
+        method,
+        details: $("wdDetails").value.trim(),
+      });
       closeSheet();
       toast(`Request #${r.request_id} sent: ${r.amount_usd} USD`, "ok");
       notifyHaptic("success");
@@ -1082,7 +1211,7 @@ function plansSheet(w) {
     .map(
       (t) => `
     <div class="tier-row ${w.vip === t.tier ? "mine" : ""}">
-      <div><b>${t.name}</b><div class="tier-sub">${t.withdraw_per_week}× withdraw / week · ${[100, 75, 50, 25][t.tier]}% fees</div></div>
+      <div><b>${t.name}</b><div class="tier-sub">${t.withdraw_per_week}× withdraw / week · −${t.discount || 0}% fees</div></div>
       <button class="item-btn ${w.vip >= t.tier ? "done" : ""}" data-tier="${t.tier}" ${w.vip >= t.tier ? "disabled" : ""}>
         ${w.vip >= t.tier ? "Active" : fmt(t.deposit_usd) + " USD"}
       </button>

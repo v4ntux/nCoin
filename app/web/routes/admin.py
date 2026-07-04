@@ -174,9 +174,8 @@ async def market(
 
 class MarketBody(BaseModel):
     official_usd: float = Field(gt=0)
-    day_min_usd: float = Field(gt=0)
-    day_max_usd: float = Field(gt=0)
-    push_trade: bool = True
+    delta_usd: float = Field(ge=0)
+    push_trade: bool = False
 
 
 @router.post("/market")
@@ -186,7 +185,7 @@ async def market_set(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     result = await admin_service.market_set(
-        session, body.official_usd, body.day_min_usd, body.day_max_usd, body.push_trade
+        session, body.official_usd, body.delta_usd, body.push_trade
     )
     await session.commit()
     return result
@@ -245,5 +244,87 @@ async def task_delete(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     result = await admin_service.task_delete(session, body.id)
+    await session.commit()
+    return result
+
+
+# ── news ──
+@router.get("/news")
+async def news(
+    admin: User = Depends(current_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    items = await admin_service.news_admin_list(session)
+    await session.commit()
+    return {"items": items}
+
+
+class NewsBody(BaseModel):
+    tag: str = Field("NEW", max_length=12)
+    title: str = Field(min_length=1, max_length=64)
+    text: str = Field("", max_length=256)
+    sort: int = Field(0)
+
+
+@router.post("/news")
+async def news_create(
+    body: NewsBody,
+    admin: User = Depends(current_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    result = await admin_service.news_create(session, body.tag, body.title, body.text, body.sort)
+    await session.commit()
+    return result
+
+
+@router.post("/news/toggle")
+async def news_toggle(
+    body: ToggleBody,
+    admin: User = Depends(current_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    result = await admin_service.news_toggle(session, body.id, body.active)
+    await session.commit()
+    return result
+
+
+@router.post("/news/delete")
+async def news_delete(
+    body: TaskDeleteBody,
+    admin: User = Depends(current_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    result = await admin_service.news_delete(session, body.id)
+    await session.commit()
+    return result
+
+
+# ── settings (support + VIP) ──
+@router.get("/settings")
+async def settings_get(
+    admin: User = Depends(current_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    result = await admin_service.settings_view(session)
+    await session.commit()
+    return result
+
+
+class SettingsBody(BaseModel):
+    support_tg: str = Field("", max_length=64)
+    support_email: str = Field("", max_length=64)
+    support_text: str = Field("", max_length=256)
+    vip: list[dict] = Field(default_factory=list)
+
+
+@router.post("/settings")
+async def settings_save(
+    body: SettingsBody,
+    admin: User = Depends(current_admin),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    result = await admin_service.settings_save(
+        session, body.support_tg, body.support_email, body.support_text, body.vip
+    )
     await session.commit()
     return result

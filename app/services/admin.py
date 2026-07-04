@@ -13,6 +13,7 @@ from app.db.models import (
     DepositRequest,
     Event,
     LedgerEntry,
+    News,
     Order,
     Trade,
     User,
@@ -21,7 +22,7 @@ from app.db.models import (
 from app.services.economy import credit, credit_usd
 from app.services.errors import GameError
 from app.services.exchange import (
-    chart as price_chart,
+    candles as price_candles,
     fake_trade,
     get_market_config,
     keep_price_in_band,
@@ -141,9 +142,9 @@ async def stats(session: AsyncSession) -> dict:
 
 
 async def chart(session: AsyncSession, kind: str, tf: str = "month") -> list[dict]:
-    """3 типа графиков: цена (по сделкам), рост юзеров, объём торгов."""
+    """3 типа графиков: цена (свечи→линия close), рост юзеров, объём торгов."""
     if kind == "price":
-        return await price_chart(session, tf)
+        return [{"t": c["t"], "v": c["c"]} for c in await price_candles(session, tf)]
 
     span = {"day": timedelta(days=1), "month": timedelta(days=30)}.get(tf)
     if kind == "users":
@@ -474,8 +475,10 @@ async def event_toggle(session: AsyncSession, event_id: int, active: bool) -> di
 async def market_admin_view(session: AsyncSession) -> dict:
     cfg = await get_market_config(session)
     last = await last_price_micro(session)
+    delta = (cfg.day_max_micro - cfg.day_min_micro) / 2
     return {
         "official": _usd(cfg.official_micro),
+        "delta": round(delta / USD_MICRO, 6),
         "day_min": _usd(cfg.day_min_micro),
         "day_max": _usd(cfg.day_max_micro),
         "last": _usd(last),
@@ -486,15 +489,16 @@ async def market_admin_view(session: AsyncSession) -> dict:
 async def market_set(
     session: AsyncSession,
     official_usd: float,
-    day_min_usd: float,
-    day_max_usd: float,
+    delta_usd: float,
     push: bool = True,
 ) -> dict:
+    """Админ задаёт цену + допуск (±). Коридор = official ∓ delta."""
     o = round(official_usd * USD_MICRO)
-    mn = round(day_min_usd * USD_MICRO)
-    mx = round(day_max_usd * USD_MICRO)
-    if not (0 < mn <= o <= mx):
-        raise GameError("bad_band", "Need 0 < min ≤ official ≤ max")
+    d = round(max(0.0, delta_usd) * USD_MICRO)
+    mn = max(1, o - d)
+    mx = o + d
+    if o <= 0:
+        raise GameError("bad_band", "Price must be positive")
     cfg = await get_market_config(session)
     cfg.official_micro, cfg.day_min_micro, cfg.day_max_micro = o, mn, mx
     cfg.updated_at = utcnow()
@@ -568,3 +572,99 @@ async def task_delete(session: AsyncSession, task_id: int) -> dict:
     if ct:
         await session.delete(ct)
     return {"deleted": task_id}
+
+
+# ---------------------------------------------------------------- news
+
+
+def _news_row(n: News) -> dict:
+    return {
+        "id": n.id,
+        "tag": n.tag,
+        "title": n.title,
+        "text": n.text,
+        "active": n.active,
+        "sort": n.sort,
+    }
+
+
+async def news_admin_list(session: AsyncSession) -> list[dict]:
+    rows = (
+        (await session.execute(select(News).order_by(News.sort, News.id.desc())))
+        .scalars()
+        .all()
+    )
+    return [_news_row(n) for n in rows]
+
+
+async def news_create(
+    session: AsyncSession, tag: str, title: str, text: str, sort: int = 0
+) -> dict:
+    n = News(
+        tag=(tag or "NEW").strip()[:12].upper(),
+        title=title.strip()[:64],
+        text=text.strip()[:256],
+        sort=sort,
+        active=True,
+    )
+    session.add(n)
+    await session.flush()
+    return _news_row(n)
+
+
+async def news_toggle(session: AsyncSession, news_id: int, active: bool) -> dict:
+    n = await session.get(News, news_id)
+    if not n:
+        raise GameError("no_news", "News not found")
+    n.active = active
+    return _news_row(n)
+
+
+async def news_delete(session: AsyncSession, news_id: int) -> dict:
+    n = await session.get(News, news_id)
+    if n:
+        await session.delete(n)
+    return {"deleted": news_id}
+
+
+# ---------------------------------------------------------------- settings (support + VIP)
+
+
+async def settings_view(session: AsyncSession) -> dict:
+    from app.services import settings_store
+
+    s = await settings_store.load(session)
+    rules = settings_store.vip_rules(s)
+    return {
+        "support_tg": s.support_tg,
+        "support_email": s.support_email,
+        "support_text": s.support_text,
+        "vip": [rules[t] for t in sorted(rules) if t > 0],
+    }
+
+
+async def settings_save(
+    session: AsyncSession,
+    support_tg: str,
+    support_email: str,
+    support_text: str,
+    vip: list[dict],
+) -> dict:
+    from app.services import settings_store
+
+    s = await settings_store.load(session)
+    s.support_tg = (support_tg or "").strip()[:64]
+    s.support_email = (support_email or "").strip()[:64]
+    s.support_text = (support_text or "").strip()[:256]
+    # vip: [{tier, price, discount, withdraws}, ...]
+    over: dict[str, dict] = {}
+    for row in vip or []:
+        tier = int(row.get("tier", 0))
+        if tier in (1, 2, 3):
+            over[str(tier)] = {
+                "price": float(row.get("price", 0)),
+                "discount": int(row.get("discount", 0)),
+                "withdraws": int(row.get("withdraws", 0)),
+            }
+    s.vip = over
+    return await settings_view(session)

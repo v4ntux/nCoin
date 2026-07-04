@@ -39,6 +39,13 @@ body.admin { overflow: auto; }
 .quick-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin: 14px 0; }
 .quick-actions.five { grid-template-columns: repeat(5, 1fr); }
 .quick-actions.five .qa { padding: 12px 2px; font-size: 11px; }
+.quick-actions.wrap { grid-template-columns: repeat(4, 1fr); }
+.quick-actions.wrap .qa { padding: 12px 2px; font-size: 11px; }
+.vip-edit { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr; gap: 6px; align-items: center; margin-bottom: 8px; }
+.vip-edit-name { font-weight: 700; font-size: 13px; }
+.vip-edit input { padding: 9px 8px; border-radius: 11px; font-size: 13px; color: var(--txt);
+  background: rgba(255,255,255,0.06); border: 1px solid var(--stroke-soft); outline: none; width: 100%; }
+.vip-edit input:focus { border-color: var(--gold); }
 .qa { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 14px 4px; font-size: 12px; font-weight: 600; color: var(--txt-dim); border-radius: 18px; }
 .qa i[data-ic] { width: 22px; height: 22px; color: var(--gold); }

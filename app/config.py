@@ -17,10 +17,25 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./ncoin.db"
     channel_id: str = ""
     channel_url: str = ""
+    # Railway автоматически прокидывает публичный домен — используем как fallback,
+    # чтобы кнопка Play/админка работали без ручной установки WEBAPP_URL.
+    railway_public_domain: str = ""
 
     @property
     def admin_id_list(self) -> list[int]:
         return [int(x) for x in self.admin_ids.split(",") if x.strip()]
+
+    @property
+    def web_url(self) -> str:
+        """Публичный HTTPS-адрес Web App: WEBAPP_URL (можно без https://) или домен Railway."""
+        raw = self.webapp_url.strip()
+        if raw:
+            if not raw.startswith("http"):
+                raw = "https://" + raw
+            return raw.rstrip("/")
+        if self.railway_public_domain:
+            return "https://" + self.railway_public_domain.strip().rstrip("/")
+        return ""
 
 
 @lru_cache

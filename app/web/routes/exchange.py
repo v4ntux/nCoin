@@ -37,9 +37,22 @@ async def chart(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     tf = tf if tf in ("day", "month", "all") else "day"
-    points = await ex_service.chart(session, tf)
+    candles = await ex_service.candles(session, tf)
     await session.commit()
-    return {"tf": tf, "points": points}
+    return {"tf": tf, "candles": candles}
+
+
+@router.get("/exchange/orders")
+async def orders(
+    side: str = Query("sell"),
+    offset: int = Query(0, ge=0),
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    side = side if side in ("buy", "sell") else "sell"
+    result = await ex_service.orders_page(session, side, user.id, offset)
+    await session.commit()
+    return result
 
 
 @router.post("/exchange/order")

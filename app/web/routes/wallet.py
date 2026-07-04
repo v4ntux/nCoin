@@ -16,6 +16,8 @@ class TransferBody(BaseModel):
 
 class WithdrawBody(BaseModel):
     amount_usd: float = Field(gt=0)
+    method: str = Field(min_length=1, max_length=16)
+    details: str = Field(min_length=1, max_length=128)
 
 
 class DepositBody(BaseModel):
@@ -49,7 +51,9 @@ async def withdraw(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    result = await wallet_service.request_withdraw(session, user, body.amount_usd)
+    result = await wallet_service.request_withdraw(
+        session, user, body.amount_usd, body.method, body.details
+    )
     await session.commit()
     return result
 

@@ -10,6 +10,7 @@ const P = {
   gift: '<path d="M4 11h16v10H4zM2 7h20v4H2zM12 7v14M12 7c-2 0-4.5-.8-4.5-2.7C7.5 2.4 11 2.6 12 7ZM12 7c2 0 4.5-.8 4.5-2.7C16.5 2.4 13 2.6 12 7Z"/>',
   crown: '<path d="M4 18h16M5 16 4 7l4.5 3L12 5l3.5 5L20 7l-1 9z"/>',
   check: '<path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>',
+  news: '<path d="M4 9v6l4 1 9 5V3L8 8H4a1 1 0 0 0-1 1M18 9a3 3 0 0 1 0 6"/>',
 };
 const ic = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${P[n] || ""}</svg>`;
 function mountIcons(root = document) {
@@ -61,7 +62,7 @@ function toast(msg, cls = "") {
 function go(name) {
   document.querySelectorAll(".ascreen").forEach((s) => s.classList.toggle("active", s.id === "a-" + name));
   window.scrollTo(0, 0);
-  const load = { dashboard: loadDashboard, users: loadUsers, requests: loadRequests, market: loadMarket, tasks: loadTasksAdmin, events: loadEvents };
+  const load = { dashboard: loadDashboard, users: loadUsers, requests: loadRequests, market: loadMarket, tasks: loadTasksAdmin, events: loadEvents, news: loadNews, settings: loadSettings };
   load[name]?.();
 }
 document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
@@ -318,6 +319,13 @@ function bindReq() {
 }
 
 /* ═══ market ═══ */
+function mkPreview() {
+  const o = +$("mkOfficialIn").value || 0;
+  const d = +$("mkDeltaIn").value || 0;
+  $("mkBandPreview").textContent = o
+    ? `Band: ${fmtPx(Math.max(0, o - d))} – ${fmtPx(o + d)} USD`
+    : "";
+}
 async function loadMarket() {
   try {
     const r = await api("/admin/market");
@@ -327,20 +335,94 @@ async function loadMarket() {
     $("mkMax").textContent = fmtPx(r.day_max);
     $("mkUpdated").textContent = "Updated: " + (r.updated_at ? new Date(r.updated_at * 1000).toLocaleString() : "—");
     $("mkOfficialIn").value = r.official;
-    $("mkMinIn").value = r.day_min;
-    $("mkMaxIn").value = r.day_max;
+    $("mkDeltaIn").value = r.delta;
+    mkPreview();
   } catch (e) { toast(e.message, "err"); }
 }
+["mkOfficialIn", "mkDeltaIn"].forEach((id) => $(id).addEventListener("input", mkPreview));
 $("mkSave").addEventListener("click", async () => {
   try {
     const r = await api("/admin/market", {
       official_usd: +$("mkOfficialIn").value,
-      day_min_usd: +$("mkMinIn").value,
-      day_max_usd: +$("mkMaxIn").value,
+      delta_usd: +$("mkDeltaIn").value || 0,
       push_trade: $("mkPush").checked,
     });
-    toast("Rate updated → " + fmtPx(r.official) + " USD", "ok");
+    toast("Price set → " + fmtPx(r.official) + " USD", "ok");
     loadMarket();
+  } catch (e) { toast(e.message, "err"); }
+});
+
+/* ═══ news ═══ */
+let nwTag = "NEW";
+$("nwTag").addEventListener("click", (e) => {
+  const b = e.target.closest(".seg-btn"); if (!b) return;
+  nwTag = b.dataset.tag;
+  document.querySelectorAll("#nwTag .seg-btn").forEach((x) => x.classList.toggle("active", x === b));
+});
+$("nwCreate").addEventListener("click", async () => {
+  try {
+    await api("/admin/news", { tag: nwTag, title: $("nwTitle").value.trim(), text: $("nwText").value.trim(), sort: +$("nwSort").value || 0 });
+    toast("Card added", "ok");
+    $("nwTitle").value = ""; $("nwText").value = "";
+    loadNews();
+  } catch (e) { toast(e.message, "err"); }
+});
+async function loadNews() {
+  try {
+    const r = await api("/admin/news");
+    $("nwList").innerHTML = r.items.length
+      ? r.items.map((n) => `
+        <div class="item">
+          <div class="item-mid">
+            <div class="item-name">${n.title} <span class="lvl-tag">${n.tag}</span>${n.active ? "" : ' <span class="u-tag ban">off</span>'}</div>
+            <div class="item-sub">${n.text || ""}</div>
+          </div>
+          <div class="row-btns" style="width:auto;gap:6px">
+            <button class="item-btn ${n.active ? "" : "gold"}" data-nt="${n.id}" data-a="${n.active ? "0" : "1"}">${n.active ? "Hide" : "Show"}</button>
+            <button class="item-btn danger" data-nd="${n.id}">Del</button>
+          </div>
+        </div>`).join("")
+      : `<div class="item"><div class="item-mid" style="text-align:center;color:var(--txt-dim)">No cards</div></div>`;
+    $("nwList").querySelectorAll("[data-nt]").forEach((b) => b.addEventListener("click", async () => {
+      try { await api("/admin/news/toggle", { id: +b.dataset.nt, active: b.dataset.a === "1" }); loadNews(); } catch (e) { toast(e.message, "err"); }
+    }));
+    $("nwList").querySelectorAll("[data-nd]").forEach((b) => b.addEventListener("click", async () => {
+      try { await api("/admin/news/delete", { id: +b.dataset.nd }); loadNews(); } catch (e) { toast(e.message, "err"); }
+    }));
+  } catch (e) { toast(e.message, "err"); }
+}
+
+/* ═══ settings (support + VIP) ═══ */
+async function loadSettings() {
+  try {
+    const r = await api("/admin/settings");
+    $("setTg").value = r.support_tg || "";
+    $("setEmail").value = r.support_email || "";
+    $("setText").value = r.support_text || "";
+    $("setVip").innerHTML = r.vip.map((v) => `
+      <div class="vip-edit" data-tier="${v.tier}">
+        <div class="vip-edit-name">${v.name}</div>
+        <input class="v-price" type="number" step="0.5" value="${v.price}" placeholder="price $">
+        <input class="v-disc" type="number" value="${v.discount}" placeholder="disc %">
+        <input class="v-wd" type="number" value="${v.withdraws}" placeholder="wd/wk">
+      </div>`).join("");
+  } catch (e) { toast(e.message, "err"); }
+}
+$("setSave").addEventListener("click", async () => {
+  try {
+    const vip = [...document.querySelectorAll("#setVip .vip-edit")].map((row) => ({
+      tier: +row.dataset.tier,
+      price: +row.querySelector(".v-price").value || 0,
+      discount: +row.querySelector(".v-disc").value || 0,
+      withdraws: +row.querySelector(".v-wd").value || 0,
+    }));
+    await api("/admin/settings", {
+      support_tg: $("setTg").value.trim(),
+      support_email: $("setEmail").value.trim(),
+      support_text: $("setText").value.trim(),
+      vip,
+    });
+    toast("Settings saved", "ok");
   } catch (e) { toast(e.message, "err"); }
 });
 

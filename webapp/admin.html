@@ -39,12 +39,14 @@
       </div>
     </div>
 
-    <div class="quick-actions five">
+    <div class="quick-actions wrap">
       <button class="qa glass" data-go="users"><i data-ic="users"></i>Users</button>
       <button class="qa glass" data-go="requests"><i data-ic="wallet"></i>Requests<span class="badge hidden" id="reqBadge">0</span></button>
       <button class="qa glass" data-go="market"><i data-ic="chart"></i>Market</button>
       <button class="qa glass" data-go="tasks"><i data-ic="check"></i>Tasks</button>
       <button class="qa glass" data-go="events"><i data-ic="gift"></i>Events</button>
+      <button class="qa glass" data-go="news"><i data-ic="news"></i>News</button>
+      <button class="qa glass" data-go="settings"><i data-ic="crown"></i>Settings</button>
     </div>
 
     <div class="list-head"><span class="row-ic" data-ic="crown">Top players</span></div>
@@ -86,16 +88,16 @@
       <div class="muted" id="mkUpdated"></div>
     </div>
     <div class="card glass">
-      <div class="field"><label>Official rate (USD per Coin)</label><input id="mkOfficialIn" type="number" step="0.0001" inputmode="decimal"></div>
       <div class="two-col">
-        <div class="field"><label>Day min</label><input id="mkMinIn" type="number" step="0.0001" inputmode="decimal"></div>
-        <div class="field"><label>Day max</label><input id="mkMaxIn" type="number" step="0.0001" inputmode="decimal"></div>
+        <div class="field"><label>Price you want (USD)</label><input id="mkOfficialIn" type="number" step="0.0001" inputmode="decimal"></div>
+        <div class="field"><label>± allowed (delta)</label><input id="mkDeltaIn" type="number" step="0.0001" inputmode="decimal" placeholder="0.0005"></div>
       </div>
+      <div class="muted" id="mkBandPreview"></div>
       <label class="check"><input type="checkbox" id="mkPush"> Instant jump (off = плавно, без подозрений)</label>
-      <button class="btn-primary" id="mkSave">Apply rate & band</button>
-      <div class="hint">Бот сам делает fake-сделки «между собой» и незаметно ведёт курс к official.
-        Instant — резкий скачок сейчас. Выкл — маркетмейкер плавно подводит цену за пару минут.
-        Если игроки уводят цену за коридор, алгоритм возвращает её обратно.</div>
+      <button class="btn-primary" id="mkSave">Apply price</button>
+      <div class="hint">Пример: цена 0.004, delta 0.0005 → коридор 0.0035–0.0045. Бот делает
+        fake-сделки «между собой» человечными объёмами (200, 350, 500) и незаметно ведёт курс.
+        Instant — резкий скачок; выкл — плавно за пару минут.</div>
     </div>
   </section>
 
@@ -139,6 +141,45 @@
     </div>
     <div class="list-head"><span>All events</span></div>
     <div class="list" id="evList"></div>
+  </section>
+
+  <!-- ═══ NEWS ═══ -->
+  <section class="ascreen" id="a-news">
+    <div class="sub-head"><button class="btn-back" data-home></button><h1>News &amp; Events</h1></div>
+    <div class="card glass">
+      <div class="two-col">
+        <div class="field"><label>Tag</label>
+          <div class="seg glass-thin sm" id="nwTag">
+            <button class="seg-btn active" data-tag="NEW">NEW</button>
+            <button class="seg-btn" data-tag="SOON">SOON</button>
+            <button class="seg-btn" data-tag="HOT">HOT</button>
+          </div>
+        </div>
+        <div class="field"><label>Sort</label><input id="nwSort" type="number" inputmode="numeric" value="0"></div>
+      </div>
+      <div class="field"><label>Title</label><input id="nwTitle" placeholder="x2 Mining Weekend"></div>
+      <div class="field"><label>Text</label><input id="nwText" placeholder="Double mining for 48h"></div>
+      <button class="btn-primary" id="nwCreate">Add card</button>
+      <div class="hint">Карточки показываются на главной у игроков (News &amp; Events).</div>
+    </div>
+    <div class="list-head"><span>All cards</span></div>
+    <div class="list" id="nwList"></div>
+  </section>
+
+  <!-- ═══ SETTINGS ═══ -->
+  <section class="ascreen" id="a-settings">
+    <div class="sub-head"><button class="btn-back" data-home></button><h1>Settings</h1></div>
+    <div class="card glass">
+      <div class="chart-title" style="margin-bottom:10px">Support contacts</div>
+      <div class="field"><label>Telegram (@username)</label><input id="setTg" placeholder="@support"></div>
+      <div class="field"><label>Email</label><input id="setEmail" placeholder="help@ncoin.app"></div>
+      <div class="field"><label>Message shown to users</label><input id="setText" placeholder="We reply within 24h"></div>
+    </div>
+    <div class="card glass">
+      <div class="chart-title" style="margin-bottom:10px">VIP plans (price · discount % · withdraws/week)</div>
+      <div id="setVip"></div>
+    </div>
+    <button class="btn-primary" id="setSave">Save settings</button>
   </section>
 </main>
 

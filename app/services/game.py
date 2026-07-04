@@ -62,6 +62,9 @@ async def build_state(session: AsyncSession, user: User) -> dict:
     combo = user.combo
     if user.last_tap_at and (now - user.last_tap_at).total_seconds() > COMBO_RESET_GAP:
         combo = 0
+    from app.services.exchange import rate_usd
+
+    rate = await rate_usd(session)  # живой курс с биржи
     return {
         "version": APP_VERSION,
         "server_time": ts(now),
@@ -73,7 +76,7 @@ async def build_state(session: AsyncSession, user: User) -> dict:
             "xp": user.xp,
             "xp_next": xp_to_next(user.level),
             "coins": user.coins,
-            "usd": round(user.coins * COIN_USD_RATE, 4),
+            "usd": round(user.coins * rate, 4),
             "vip": user.vip_tier,
             "vip_name": tier_name(user.vip_tier),
             "ref_count": user.ref_count,
@@ -107,7 +110,7 @@ async def build_state(session: AsyncSession, user: User) -> dict:
             "started_at": ts(user.mining_started_at),
         },
         "economy": {
-            "usd_rate": COIN_USD_RATE,
+            "usd_rate": rate,
             "income_mult": round(eff.income_mult, 3),
         },
     }
@@ -175,7 +178,6 @@ async def tap(session: AsyncSession, user: User, count: int) -> dict:
         "overheated": overheated,
         "xp_added": xp,
         "coins": user.coins,
-        "usd": round(user.coins * COIN_USD_RATE, 4),
         "energy": round(user.energy, 2),
         "heat": round(user.heat, 2),
         "overheat_until": ts(user.overheat_until),
@@ -206,7 +208,6 @@ async def collect(session: AsyncSession, user: User) -> dict:
         "collected": mv.mined,
         "xp_added": xp,
         "coins": user.coins,
-        "usd": round(user.coins * COIN_USD_RATE, 4),
         "level": user.level,
         "xp": user.xp,
         "xp_next": xp_to_next(user.level),

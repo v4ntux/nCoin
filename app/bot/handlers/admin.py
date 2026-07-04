@@ -122,23 +122,25 @@ async def cmd_setvip(message: Message, command: CommandObject) -> None:
 @router.message(Command("panel"))
 async def cmd_panel(message: Message) -> None:
     settings = get_settings()
-    url = settings.webapp_url
-    if url.startswith("https://"):
+    url = settings.web_url
+    if url:
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="🛠 Admin panel",
-                        web_app=WebAppInfo(url=url.rstrip("/") + "/admin.html"),
+                        text="🛠 Open Admin panel",
+                        web_app=WebAppInfo(url=url + "/admin.html"),
                     )
                 ]
             ]
         )
-        await message.answer("Admin panel:", reply_markup=kb)
+        await message.answer("🛠 <b>Admin panel</b>", reply_markup=kb)
     else:
         await message.answer(
-            f"WEBAPP_URL не настроен. Локально: "
-            f"http://{settings.host}:{settings.port}/admin.html"
+            "⚙️ Публичный URL ещё не готов.\n"
+            "На Railway домен подхватится сам (RAILWAY_PUBLIC_DOMAIN) после генерации "
+            "домена в Settings → Networking. Локально открой "
+            f"http://127.0.0.1:{settings.port}/admin.html"
         )
 
 
