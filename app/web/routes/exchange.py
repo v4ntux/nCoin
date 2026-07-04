@@ -36,10 +36,10 @@ async def chart(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    tf = tf if tf in ("5m", "15m", "30m", "1h", "4h", "1d") else "1h"
+    tf = tf if tf in ("15m", "30m", "1h", "1d", "1w", "1mo") else "1h"
     candles = await ex_service.candles(session, tf)
     await session.commit()
-    return {"tf": tf, "candles": candles}
+    return {"tf": tf, "sec": ex_service.tf_seconds(tf), "candles": candles}
 
 
 @router.get("/exchange/orders")

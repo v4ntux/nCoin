@@ -469,11 +469,27 @@ function recalcTrade() {
 }
 ["exPriceIn", "exAmountIn"].forEach((id) => $(id).addEventListener("input", recalcTrade));
 
+const TF_CANDLE = ["15m", "30m", "1h"];
+const TF_LINE = ["1h", "1d", "1w", "1mo"];
+const TF_LABEL = { "15m": "15m", "30m": "30m", "1h": "1H", "1d": "1D", "1w": "1W", "1mo": "1M" };
+let exSec = 3600;
+const SLOT = 14;   // фиксированное расстояние между свечами (px) — не меняется
+let vOffset = 0;   // сдвиг по времени (в свечах, 0 = последняя у правого края)
+let vShift = 0;    // сдвиг по курсу (px)
+
+function renderTfChips() {
+  const set = exCtype === "candle" ? TF_CANDLE : TF_LINE;
+  if (!set.includes(exTf)) exTf = "1h";
+  $("tfChips").innerHTML = set
+    .map((t) => `<button class="chip ${t === exTf ? "active" : ""}" data-tf="${t}">${TF_LABEL[t]}</button>`)
+    .join("");
+}
 $("tfChips").addEventListener("click", (e) => {
   const chip = e.target.closest(".chip");
   if (!chip) return;
   exTf = chip.dataset.tf;
-  document.querySelectorAll("#tfChips .chip").forEach((c) => c.classList.toggle("active", c === chip));
+  vOffset = 0; vShift = 0;
+  renderTfChips();
   loadChart();
 });
 $("ctypeChips").addEventListener("click", (e) => {
@@ -481,17 +497,44 @@ $("ctypeChips").addEventListener("click", (e) => {
   if (!chip) return;
   exCtype = chip.dataset.ctype;
   document.querySelectorAll("#ctypeChips .chip").forEach((c) => c.classList.toggle("active", c === chip));
-  if (exCandles) drawChart(exCandles);
+  vOffset = 0; vShift = 0;
+  renderTfChips();
+  loadChart();
 });
+renderTfChips();
 
 let exCandles = null;
 async function loadChart() {
   try {
     const r = await api("/exchange/chart?tf=" + exTf);
     exCandles = r.candles;
+    exSec = r.sec || 3600;
     drawChart(exCandles);
   } catch {}
 }
+
+// перетаскивание графика: по времени (горизонталь) и по курсу (вертикаль)
+(() => {
+  const cv = $("exChart");
+  let drag = null;
+  cv.addEventListener("pointerdown", (e) => {
+    drag = { x: e.clientX, y: e.clientY };
+    cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if (!drag || !exCandles) return;
+    vOffset += (e.clientX - drag.x) / SLOT;
+    vShift += e.clientY - drag.y;
+    drag = { x: e.clientX, y: e.clientY };
+    drawChart(exCandles);
+  });
+  ["pointerup", "pointercancel"].forEach((ev) => cv.addEventListener(ev, () => (drag = null)));
+})();
+
+// тик раз в секунду — обновляет таймер закрытия свечи на бирке
+setInterval(() => {
+  if (exCandles && document.querySelector(".screen.active")?.id === "screen-market") drawChart(exCandles);
+}, 1000);
 
 $("exSubmit").addEventListener("click", async () => {
   await placeOrder(exSide, +$("exPriceIn").value, +$("exAmountIn").value);

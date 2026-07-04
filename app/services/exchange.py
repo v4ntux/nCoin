@@ -315,49 +315,58 @@ async def rate_usd(session: AsyncSession) -> float:
 
 # ---------------------------------------------------------------- график / вид
 
-# таймфрейм → длина свечи в секундах (как у TradingView)
+# таймфрейм → длина свечи в секундах. Свечи: 15m/30m/1h; линия: 1h/1d/1w/1mo
 _TF_SEC = {
-    "5m": 300,
     "15m": 900,
     "30m": 1800,
     "1h": 3600,
-    "4h": 14400,
     "1d": 86400,
+    "1w": 604800,
+    "1mo": 2592000,
 }
-CANDLE_LIMIT = 80  # сколько последних свечей отдаём
+CANDLE_LIMIT = 120  # окно свечей
+
+
+def tf_seconds(tf: str) -> int:
+    return _TF_SEC.get(tf, 3600)
 
 
 async def candles(session: AsyncSession, tf: str) -> list[dict]:
-    """OHLC-свечи фиксированной длины (бакеты по секундам) для трейдерского графика.
+    """Непрерывные OHLC-свечи как настоящие японские: без дыр по времени.
 
-    Бакет = floor(epoch / sec) * sec. open/close — первая/последняя сделка в бакете,
-    high/low — max/min. Возвращает последние CANDLE_LIMIT свечей: [{t, o, h, l, c, v}],
-    t — эпоха начала свечи (сек, UTC).
+    Бакет = floor(epoch/sec)*sec. Пустой интервал → плоская свеча по close
+    предыдущей (o=h=l=c=prev_close, v=0). Серия начинается с первой сделки
+    (без пустой истории слева) и всегда включает текущую формирующуюся свечу.
     """
-    sec = _TF_SEC.get(tf, 3600)
-    epoch = cast(func.strftime("%s", Trade.created_at), Integer)
-    bstart = (epoch - epoch % sec).label("bstart")  # начало свечи (epoch, целое)
-    q = (
-        select(
-            bstart,
-            func.min(Trade.price_micro),
-            func.max(Trade.price_micro),
-            func.min(Trade.id),
-            func.max(Trade.id),
-            func.coalesce(func.sum(Trade.amount_coins), 0),
-        )
-        .group_by("bstart")
-        .order_by(func.min(Trade.id).desc())
-        .limit(CANDLE_LIMIT)
-    )
-    rows = list(reversed((await session.execute(q)).all()))
+    sec = tf_seconds(tf)
+    now_ep = int(ts(utcnow()))
+    range_end = now_ep - now_ep % sec               # текущая (открытая) свеча
+    range_start = range_end - (CANDLE_LIMIT - 1) * sec
 
-    # цены первой/последней сделки в бакете (open/close)
+    epoch = cast(func.strftime("%s", Trade.created_at), Integer)
+    bstart = (epoch - epoch % sec).label("bstart")
+    rows = (
+        await session.execute(
+            select(
+                bstart,
+                func.min(Trade.price_micro),
+                func.max(Trade.price_micro),
+                func.min(Trade.id),
+                func.max(Trade.id),
+                func.coalesce(func.sum(Trade.amount_coins), 0),
+            )
+            .where(epoch >= range_start)
+            .group_by("bstart")
+        )
+    ).all()
+    by_start = {int(b): (lo, hi, fid, lid, vol) for b, lo, hi, fid, lid, vol in rows}
+
+    # цены первой/последней сделки в каждом бакете (open/close)
     prices: dict[int, int] = {}
     ids: set[int] = set()
-    for _, _, _, first_id, last_id, _ in rows:
-        ids.add(first_id)
-        ids.add(last_id)
+    for _, _, fid, lid, _ in by_start.values():
+        ids.add(fid)
+        ids.add(lid)
     if ids:
         for tid, pm in (
             await session.execute(
@@ -366,25 +375,53 @@ async def candles(session: AsyncSession, tf: str) -> list[dict]:
         ).all():
             prices[tid] = pm
 
-    out = []
-    for bstart, lo, hi, first_id, last_id, vol in rows:
-        o = prices.get(first_id, lo)
-        c = prices.get(last_id, hi)
-        out.append(
-            {
-                "t": int(bstart),
-                "o": round(o / USD_MICRO, 6),
-                "h": round(hi / USD_MICRO, 6),
-                "l": round(lo / USD_MICRO, 6),
-                "c": round(c / USD_MICRO, 6),
-                "v": int(vol),
-            }
+    # закрытие ДО окна — чтобы заполнить тихое начало окна плоскими свечами
+    prev_close: float | None = None
+    older = (
+        await session.execute(
+            select(Trade.price_micro)
+            .where(epoch < range_start)
+            .order_by(Trade.id.desc())
+            .limit(1)
         )
-    if not out:
+    ).scalar_one_or_none()
+    if older is not None:
+        prev_close = round(older / USD_MICRO, 6)
+
+    if by_start:
+        start = range_start if prev_close is not None else min(by_start)
+    elif prev_close is not None:
+        start = range_end - 20 * sec  # тихий рынок: немного плоской истории
+    else:
         cfg = await get_market_config(session)
         p = _usd(cfg.official_micro)
-        out = [{"t": 0, "o": p, "h": p, "l": p, "c": p, "v": 0}]
-    return out
+        return [{"t": range_end, "o": p, "h": p, "l": p, "c": p, "v": 0}]
+
+    out: list[dict] = []
+    t = start
+    while t <= range_end:
+        if t in by_start:
+            lo, hi, fid, lid, vol = by_start[t]
+            o = round(prices.get(fid, lo) / USD_MICRO, 6)
+            c = round(prices.get(lid, hi) / USD_MICRO, 6)
+            out.append(
+                {
+                    "t": t,
+                    "o": o,
+                    "h": round(hi / USD_MICRO, 6),
+                    "l": round(lo / USD_MICRO, 6),
+                    "c": c,
+                    "v": int(vol),
+                }
+            )
+            prev_close = c
+        elif prev_close is not None:
+            out.append(
+                {"t": t, "o": prev_close, "h": prev_close, "l": prev_close,
+                 "c": prev_close, "v": 0}
+            )
+        t += sec
+    return out[-CANDLE_LIMIT:]
 
 
 async def orders_page(
