@@ -568,6 +568,24 @@ function axTime(epoch) {
     ? p(d.getDate()) + "." + p(d.getMonth() + 1)
     : p(d.getHours()) + ":" + p(d.getMinutes());
 }
+const axp = (v) => {
+  v = +v;
+  if (!isFinite(v) || v === 0) return "0";
+  return v.toPrecision(4).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+};
+function axt(ep) {
+  const d = new Date(ep * 1000);
+  const p = (x) => String(x).padStart(2, "0");
+  if (exSec < 86400) return p(d.getHours()) + ":" + p(d.getMinutes());
+  if (exSec < 604800 * 4) return p(d.getDate()) + "." + p(d.getMonth() + 1);
+  return d.getFullYear() + "." + p(d.getMonth() + 1);
+}
+function candleCloseLeft() {
+  if (!exCandles || !exCandles.length) return 0;
+  const end = exCandles[exCandles.length - 1].t + exSec;
+  return Math.max(0, end - Math.floor(Date.now() / 1000));
+}
+
 function drawChart(candles) {
   const cv = $("exChart");
   const dpr = window.devicePixelRatio || 1;
@@ -576,80 +594,114 @@ function drawChart(candles) {
   cv.width = w * dpr;
   cv.height = h * dpr;
   const ctx = cv.getContext("2d");
-  ctx.scale(dpr, dpr);
-  ctx.fillStyle = "#0b0a08";           // чёрный фон как у трейдеров
-  ctx.fillRect(0, 0, w, h);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h); // прозрачный фон — карточка бота видна
   ctx.font = "10px -apple-system, BlinkMacSystemFont, sans-serif";
   if (!candles || !candles.length) return;
-  const cs = candles.length === 1 ? [candles[0], candles[0]] : candles;
-  const n = cs.length;
+  const n = candles.length;
 
-  const AX_R = 56, AX_B = 18, PT = 8, PL = 4;   // правая ось цены, нижняя — время
-  const plotW = w - PL - AX_R;
-  const plotH = h - PT - AX_B;
+  const AX_R = 54, AX_B = 18, PT = 6, PL = 6;
+  const plotW = w - PL - AX_R, plotH = h - PT - AX_B;
+  const FUT = 3; // немного пустого места справа от последней свечи
 
-  let max = Math.max(...cs.map((c) => c.h)), min = Math.min(...cs.map((c) => c.l));
-  if (min === max) { min *= 0.999; max *= 1.001; }
-  const pad = (max - min) * 0.08 || max * 0.02;
+  // фиксированный шаг между свечами; правый край = последняя свеча + сдвиг
+  const visSlots = Math.max(1, Math.floor(plotW / SLOT));
+  const minRight = Math.min(n - 1, visSlots - 1);
+  let rightIdx = Math.round(n - 1 + vOffset);
+  rightIdx = Math.max(minRight, Math.min(n - 1 + FUT, rightIdx));
+  vOffset = rightIdx - (n - 1); // фиксируем сдвиг в допустимых пределах
+  const xOf = (i) => PL + plotW - SLOT / 2 - (rightIdx - i) * SLOT;
+
+  const firstVis = Math.max(0, rightIdx - visSlots - 1);
+  const lastVis = Math.min(n - 1, rightIdx);
+  const vis = candles.slice(firstVis, lastVis + 1);
+  let max = Math.max(...vis.map((c) => c.h)), min = Math.min(...vis.map((c) => c.l));
+  if (!isFinite(max) || min === max) { const m = max || 1; min = m * 0.999; max = m * 1.001; }
+  const pad = (max - min) * 0.12 || max * 0.02;
   max += pad; min -= pad;
-  const py = (v) => PT + (1 - (v - min) / (max - min)) * plotH;
-  const up = "#26a69a", down = "#ef5350";        // цвета TradingView
-  const grid = "rgba(255,255,255,0.06)", axtxt = "rgba(255,255,255,0.45)";
-  const slot = plotW / n;
+  let range = max - min;
+  const shiftV = (vShift / plotH) * range; // вертикальный драг двигает окно цены
+  min -= shiftV; max -= shiftV; range = max - min;
+  const py = (v) => PT + (1 - (v - min) / range) * plotH;
 
-  // горизонтальная сетка + цены справа
+  const up = "#3ddc84", down = "#ff5d73";
+  const grid = "rgba(255,255,255,0.05)", axtxt = "rgba(245,242,234,0.4)";
+
+  // сетка + ось цены справа
   ctx.textAlign = "left"; ctx.textBaseline = "middle";
-  const GN = 4;
-  for (let g = 0; g <= GN; g++) {
-    const v = max - (g / GN) * (max - min);
-    const yy = py(v);
+  for (let g = 0; g <= 4; g++) {
+    const v = max - (g / 4) * range, yy = py(v);
     ctx.strokeStyle = grid; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(PL, yy); ctx.lineTo(PL + plotW, yy); ctx.stroke();
-    ctx.fillStyle = axtxt; ctx.fillText(axPrice(v), PL + plotW + 6, yy);
+    ctx.fillStyle = axtxt; ctx.fillText(axp(v), PL + plotW + 6, yy);
   }
-
-  // время снизу + вертикальные линии
+  // ось времени снизу
   ctx.textAlign = "center"; ctx.textBaseline = "top";
-  const step = Math.max(1, Math.ceil(n / 5));
-  for (let i = 0; i < n; i += step) {
-    const cx = PL + slot * (i + 0.5);
+  const tstep = Math.max(1, Math.ceil(visSlots / 5));
+  for (let i = firstVis; i <= lastVis; i++) {
+    if ((rightIdx - i) % tstep !== 0) continue;
+    const cx = xOf(i);
+    if (cx < PL || cx > PL + plotW) continue;
     ctx.strokeStyle = grid; ctx.beginPath(); ctx.moveTo(cx, PT); ctx.lineTo(cx, PT + plotH); ctx.stroke();
-    ctx.fillStyle = axtxt; ctx.fillText(axTime(cs[i].t), cx, PT + plotH + 4);
+    ctx.fillStyle = axtxt; ctx.fillText(axt(candles[i].t), cx, PT + plotH + 4);
   }
 
   if (exCtype === "line") {
     const grad = ctx.createLinearGradient(0, PT, 0, PT + plotH);
-    grad.addColorStop(0, "rgba(232,193,90,0.25)");
+    grad.addColorStop(0, "rgba(232,193,90,0.22)");
     grad.addColorStop(1, "rgba(232,193,90,0)");
-    const px = (i) => PL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
     ctx.beginPath();
-    cs.forEach((c, i) => (i ? ctx.lineTo(px(i), py(c.c)) : ctx.moveTo(px(0), py(c.c))));
+    let started = false, lastX = PL;
+    for (let i = firstVis; i <= lastVis; i++) {
+      const cx = xOf(i);
+      if (!started) { ctx.moveTo(cx, py(candles[i].c)); started = true; }
+      else ctx.lineTo(cx, py(candles[i].c));
+      lastX = cx;
+    }
     ctx.strokeStyle = "#e8c15a"; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.stroke();
-    ctx.lineTo(px(n - 1), PT + plotH); ctx.lineTo(px(0), PT + plotH); ctx.closePath();
+    ctx.lineTo(lastX, PT + plotH); ctx.lineTo(PL, PT + plotH); ctx.closePath();
     ctx.fillStyle = grad; ctx.fill();
   } else {
-    const bw = Math.max(2, Math.min(12, slot * 0.62));
-    cs.forEach((c, i) => {
-      const cx = PL + slot * (i + 0.5);
+    const bw = Math.max(2, Math.min(SLOT - 3, SLOT * 0.66));
+    for (let i = firstVis; i <= lastVis; i++) {
+      const c = candles[i], cx = xOf(i);
+      if (cx < PL - SLOT || cx > PL + plotW + SLOT) continue;
       const col = c.c >= c.o ? up : down;
       ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(cx, py(c.h)); ctx.lineTo(cx, py(c.l)); ctx.stroke();
       const yO = py(c.o), yC = py(c.c);
-      ctx.fillRect(cx - bw / 2, Math.min(yO, yC), bw, Math.max(1, Math.abs(yC - yO)));
-    });
+      const bh = Math.max(1, Math.abs(yC - yO));
+      ctx.fillRect(Math.round(cx - bw / 2), Math.round(Math.min(yO, yC)), Math.round(bw), Math.round(bh));
+    }
   }
 
-  // линия последней цены + бирка на правой оси
-  const lastC = cs[n - 1];
+  // линия последней цены + бирка справа
+  const lastC = candles[n - 1];
   const lastCol = lastC.c >= lastC.o ? up : down;
   const ly = py(lastC.c);
-  ctx.setLineDash([3, 3]); ctx.strokeStyle = lastCol; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(PL, ly); ctx.lineTo(PL + plotW, ly); ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.fillStyle = lastCol; ctx.fillRect(PL + plotW, ly - 8, AX_R, 16);
-  ctx.fillStyle = "#0b0a08"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
-  ctx.font = "bold 10px -apple-system, sans-serif";
-  ctx.fillText(axPrice(lastC.c), PL + plotW + 5, ly);
+  if (ly > PT && ly < PT + plotH) {
+    ctx.setLineDash([3, 3]); ctx.strokeStyle = lastCol; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PL, ly); ctx.lineTo(PL + plotW, ly); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = lastCol; ctx.fillRect(PL + plotW, ly - 8, AX_R, 16);
+    ctx.fillStyle = "#0b0a08"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.font = "bold 10px -apple-system, sans-serif";
+    ctx.fillText(axp(lastC.c), PL + plotW + 5, ly);
+  }
+
+  // таймер закрытия текущей свечи под последней (как в TradingView)
+  const left = candleCloseLeft();
+  if (left > 0 && rightIdx >= n - 1) {
+    const cx = Math.min(PL + plotW, Math.max(PL, xOf(n - 1)));
+    const mm = Math.floor(left / 60), ss = left % 60, hh = Math.floor(mm / 60);
+    const txt = hh > 0 ? `${hh}:${String(mm % 60).padStart(2, "0")}:${String(ss).padStart(2, "0")}` : `${mm}:${String(ss).padStart(2, "0")}`;
+    ctx.font = "bold 10px -apple-system, sans-serif";
+    const tw = ctx.measureText(txt).width + 10;
+    ctx.fillStyle = "rgba(232,193,90,0.9)";
+    ctx.fillRect(cx - tw / 2, PT + plotH + 2, tw, 14);
+    ctx.fillStyle = "#0b0a08"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(txt, cx, PT + plotH + 9);
+  }
 }
 
 /* ── order book (clickable) + trades filtered by side ── */
