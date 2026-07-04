@@ -443,7 +443,7 @@ function tickEventTimers() {
 /* ───────── exchange ───────── */
 let exSide = "buy";
 let exData = null;
-let exTf = "day";
+let exTf = "1h";
 let exCtype = "candle";
 let exOffset = 0;
 
@@ -514,62 +514,99 @@ async function placeOrder(side, price, amount) {
   } catch (e) { toast(e.message, "err"); }
 }
 
-/* ── candlestick + line chart ── */
+/* ── TradingView-style candlestick / line chart ── */
+function axPrice(v) {
+  return (+v).toFixed(6).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+}
+function axTime(epoch) {
+  const d = new Date(epoch * 1000);
+  const p = (n) => String(n).padStart(2, "0");
+  return exTf === "1d"
+    ? p(d.getDate()) + "." + p(d.getMonth() + 1)
+    : p(d.getHours()) + ":" + p(d.getMinutes());
+}
 function drawChart(candles) {
   const cv = $("exChart");
   const dpr = window.devicePixelRatio || 1;
   const w = cv.clientWidth || 320;
-  const h = 200;
+  const h = 230;
   cv.width = w * dpr;
   cv.height = h * dpr;
   const ctx = cv.getContext("2d");
   ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "#0b0a08";           // чёрный фон как у трейдеров
+  ctx.fillRect(0, 0, w, h);
+  ctx.font = "10px -apple-system, BlinkMacSystemFont, sans-serif";
   if (!candles || !candles.length) return;
   const cs = candles.length === 1 ? [candles[0], candles[0]] : candles;
+  const n = cs.length;
 
-  const highs = cs.map((c) => c.h), lows = cs.map((c) => c.l);
-  let max = Math.max(...highs), min = Math.min(...lows);
-  if (min === max) { min *= 0.995; max *= 1.005; }
-  const pad = (max - min) * 0.12 || max * 0.02;
+  const AX_R = 56, AX_B = 18, PT = 8, PL = 4;   // правая ось цены, нижняя — время
+  const plotW = w - PL - AX_R;
+  const plotH = h - PT - AX_B;
+
+  let max = Math.max(...cs.map((c) => c.h)), min = Math.min(...cs.map((c) => c.l));
+  if (min === max) { min *= 0.999; max *= 1.001; }
+  const pad = (max - min) * 0.08 || max * 0.02;
   max += pad; min -= pad;
-  const PL = 4, PR = 4, PT = 8, PB = 8;
-  const iw = w - PL - PR;
-  const py = (v) => PT + (1 - (v - min) / (max - min)) * (h - PT - PB);
-  const up = "#3ddc84", down = "#ff5d73";
+  const py = (v) => PT + (1 - (v - min) / (max - min)) * plotH;
+  const up = "#26a69a", down = "#ef5350";        // цвета TradingView
+  const grid = "rgba(255,255,255,0.06)", axtxt = "rgba(255,255,255,0.45)";
+  const slot = plotW / n;
 
-  ctx.strokeStyle = "rgba(255,255,255,0.05)";
-  ctx.lineWidth = 1;
-  for (let g = 0; g <= 3; g++) {
-    const yy = PT + (g / 3) * (h - PT - PB);
-    ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(w, yy); ctx.stroke();
+  // горизонтальная сетка + цены справа
+  ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  const GN = 4;
+  for (let g = 0; g <= GN; g++) {
+    const v = max - (g / GN) * (max - min);
+    const yy = py(v);
+    ctx.strokeStyle = grid; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PL, yy); ctx.lineTo(PL + plotW, yy); ctx.stroke();
+    ctx.fillStyle = axtxt; ctx.fillText(axPrice(v), PL + plotW + 6, yy);
+  }
+
+  // время снизу + вертикальные линии
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  const step = Math.max(1, Math.ceil(n / 5));
+  for (let i = 0; i < n; i += step) {
+    const cx = PL + slot * (i + 0.5);
+    ctx.strokeStyle = grid; ctx.beginPath(); ctx.moveTo(cx, PT); ctx.lineTo(cx, PT + plotH); ctx.stroke();
+    ctx.fillStyle = axtxt; ctx.fillText(axTime(cs[i].t), cx, PT + plotH + 4);
   }
 
   if (exCtype === "line") {
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, "rgba(232,193,90,0.28)");
+    const grad = ctx.createLinearGradient(0, PT, 0, PT + plotH);
+    grad.addColorStop(0, "rgba(232,193,90,0.25)");
     grad.addColorStop(1, "rgba(232,193,90,0)");
-    const px = (i) => PL + (cs.length === 1 ? iw / 2 : (i / (cs.length - 1)) * iw);
+    const px = (i) => PL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
     ctx.beginPath();
     cs.forEach((c, i) => (i ? ctx.lineTo(px(i), py(c.c)) : ctx.moveTo(px(0), py(c.c))));
     ctx.strokeStyle = "#e8c15a"; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.stroke();
-    ctx.lineTo(px(cs.length - 1), h); ctx.lineTo(px(0), h); ctx.closePath();
+    ctx.lineTo(px(n - 1), PT + plotH); ctx.lineTo(px(0), PT + plotH); ctx.closePath();
     ctx.fillStyle = grad; ctx.fill();
-    return;
+  } else {
+    const bw = Math.max(2, Math.min(12, slot * 0.62));
+    cs.forEach((c, i) => {
+      const cx = PL + slot * (i + 0.5);
+      const col = c.c >= c.o ? up : down;
+      ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx, py(c.h)); ctx.lineTo(cx, py(c.l)); ctx.stroke();
+      const yO = py(c.o), yC = py(c.c);
+      ctx.fillRect(cx - bw / 2, Math.min(yO, yC), bw, Math.max(1, Math.abs(yC - yO)));
+    });
   }
 
-  const n = cs.length;
-  const slot = iw / n;
-  const bw = Math.max(2, Math.min(14, slot * 0.6));
-  cs.forEach((c, i) => {
-    const cx = PL + slot * (i + 0.5);
-    const col = c.c >= c.o ? up : down;
-    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(cx, py(c.h)); ctx.lineTo(cx, py(c.l)); ctx.stroke();
-    const yO = py(c.o), yC = py(c.c);
-    const top = Math.min(yO, yC), bh = Math.max(1, Math.abs(yC - yO));
-    ctx.fillRect(cx - bw / 2, top, bw, bh);
-  });
+  // линия последней цены + бирка на правой оси
+  const lastC = cs[n - 1];
+  const lastCol = lastC.c >= lastC.o ? up : down;
+  const ly = py(lastC.c);
+  ctx.setLineDash([3, 3]); ctx.strokeStyle = lastCol; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PL, ly); ctx.lineTo(PL + plotW, ly); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = lastCol; ctx.fillRect(PL + plotW, ly - 8, AX_R, 16);
+  ctx.fillStyle = "#0b0a08"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.font = "bold 10px -apple-system, sans-serif";
+  ctx.fillText(axPrice(lastC.c), PL + plotW + 5, ly);
 }
 
 /* ── order book (clickable) + trades filtered by side ── */

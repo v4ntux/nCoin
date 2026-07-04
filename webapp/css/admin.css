@@ -46,6 +46,11 @@ body.admin { overflow: auto; }
 .vip-edit input { padding: 9px 8px; border-radius: 11px; font-size: 13px; color: var(--txt);
   background: rgba(255,255,255,0.06); border: 1px solid var(--stroke-soft); outline: none; width: 100%; }
 .vip-edit input:focus { border-color: var(--gold); }
+.set-row { display: flex; gap: 8px; margin: 5px 0 4px; }
+.set-row input { flex: 1; padding: 10px 12px; border-radius: 12px; font-size: 14px; color: var(--txt);
+  background: rgba(255,255,255,0.06); border: 1px solid var(--stroke-soft); outline: none; }
+.set-row input:focus { border-color: var(--gold); }
+.set-row .item-btn { min-width: 64px; }
 .qa { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 14px 4px; font-size: 12px; font-weight: 600; color: var(--txt-dim); border-radius: 18px; }
 .qa i[data-ic] { width: 22px; height: 22px; color: var(--gold); }

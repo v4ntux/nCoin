@@ -113,12 +113,15 @@
         </div>
         <div class="chart-change" id="exChange">0%</div>
       </div>
-      <canvas id="exChart" height="200"></canvas>
+      <canvas id="exChart" height="230"></canvas>
       <div class="chart-ctrl">
-        <div class="chips tf" id="tfChips">
-          <button class="chip active" data-tf="day">1D</button>
-          <button class="chip" data-tf="month">1M</button>
-          <button class="chip" data-tf="all">All</button>
+        <div class="chips tf scroll-x" id="tfChips">
+          <button class="chip" data-tf="5m">5m</button>
+          <button class="chip" data-tf="15m">15m</button>
+          <button class="chip" data-tf="30m">30m</button>
+          <button class="chip active" data-tf="1h">1H</button>
+          <button class="chip" data-tf="4h">4H</button>
+          <button class="chip" data-tf="1d">1D</button>
         </div>
         <div class="chips tf" id="ctypeChips">
           <button class="chip active" data-ctype="candle">Candles</button>

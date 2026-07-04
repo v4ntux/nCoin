@@ -229,48 +229,42 @@ async function userSheet(uid) {
         return `<div class="src-row"><span>${s.reason} <span style="opacity:.5">×${s.ops}</span></span><span class="amt ${cls}">${s.total >= 0 ? "+" : ""}${amt}</span></div>`;
       })
       .join("");
+    const vipBtns = [0, 1, 2, 3]
+      .map((t) => `<button class="item-btn ${u.vip === t ? "gold" : "ghost"}" data-vip="${t}">${t === 0 ? "Free" : "VIP " + t}</button>`)
+      .join("");
     openSheet(
       u.name,
-      `<div class="muted">id ${u.id} · Lv ${u.level} · ${u.vip_name} · ${u.ref_count} refs</div>
-       <div class="market-now">
-         <div><span>Coin</span><b>${fmt(u.coins)}</b></div>
-         <div><span>USD</span><b>${fmtUsd(u.usd)}</b></div>
-         <div><span>Earned</span><b>${fmt(u.total_earned)}</b></div>
-       </div>
-       <div class="muted">Money sources (where it came from):</div>
-       <div class="src-list">${sources || "<div class='muted'>no ledger yet</div>"}</div>
-       <div class="act-grid">
-         <button class="btn-secondary" data-act="${u.banned ? "unban" : "ban"}">${u.banned ? "Unban" : "Ban"}</button>
+      `<div class="muted">id ${u.id} · Lv ${u.level} · ${u.ref_count} refs${u.banned ? " · <span style='color:var(--red)'>BANNED</span>" : ""}${u.frozen ? " · <span style='color:#8ab6ff'>FROZEN</span>" : ""}</div>
+       <div class="muted" style="margin-top:8px">Coin balance</div>
+       <div class="set-row"><input id="uCoins" type="number" value="${u.coins}"><button class="item-btn" id="uSetCoins">Set</button></div>
+       <div class="muted" style="margin-top:6px">USD balance</div>
+       <div class="set-row"><input id="uUsd" type="number" step="0.01" value="${u.usd}"><button class="item-btn" id="uSetUsd">Set</button></div>
+       <div class="muted" style="margin-top:10px">Plan</div>
+       <div class="act-grid" id="uVipRow">${vipBtns}</div>
+       <div class="act-grid" style="margin-top:8px">
+         <button class="btn-secondary ${u.banned ? "" : "danger"}" data-act="${u.banned ? "unban" : "ban"}">${u.banned ? "Unban" : "Ban"}</button>
          <button class="btn-secondary" data-act="${u.frozen ? "unfreeze" : "freeze"}">${u.frozen ? "Unfreeze" : "Freeze"}</button>
-         <button class="btn-secondary" id="uVip">Set VIP</button>
-         <button class="btn-secondary" id="uGive">Give Coin</button>
-         <button class="btn-secondary" id="uGiveUsd">Give USD</button>
          <button class="btn-secondary" id="uClose">Close</button>
-       </div>`
+       </div>
+       <div class="muted" style="margin-top:10px">Money sources:</div>
+       <div class="src-list">${sources || "<div class='muted'>no ledger yet</div>"}</div>`
     );
-    const doAct = async (action, value) => {
+    const doAct = async (action, value, refresh = true) => {
       try {
         await api(`/admin/users/${uid}/action`, { action, value });
         toast("Done", "ok");
-        closeSheet();
         loadUsers();
+        if (refresh) userSheet(uid);
       } catch (e) { toast(e.message, "err"); }
     };
+    $("uSetCoins").addEventListener("click", () => doAct("set_coins", +$("uCoins").value || 0));
+    $("uSetUsd").addEventListener("click", () => doAct("set_usd", +$("uUsd").value || 0));
+    $("uVipRow").querySelectorAll("[data-vip]").forEach((b) =>
+      b.addEventListener("click", () => doAct("vip", +b.dataset.vip))
+    );
     $("sheetBody").querySelectorAll("[data-act]").forEach((b) =>
       b.addEventListener("click", () => doAct(b.dataset.act))
     );
-    $("uGive").addEventListener("click", () => {
-      const v = prompt("Give how many Coin? (negative to remove)");
-      if (v) doAct("give", +v);
-    });
-    $("uGiveUsd").addEventListener("click", () => {
-      const v = prompt("Give how many USD?");
-      if (v) doAct("give_usd", +v);
-    });
-    $("uVip").addEventListener("click", () => {
-      const v = prompt("Set VIP tier 0-3", String(u.vip));
-      if (v !== null) doAct("vip", +v);
-    });
     $("uClose").addEventListener("click", closeSheet);
   } catch (e) { toast(e.message, "err"); }
 }

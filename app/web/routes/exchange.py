@@ -32,11 +32,11 @@ async def market(
 
 @router.get("/exchange/chart")
 async def chart(
-    tf: str = Query("day"),
+    tf: str = Query("1h"),
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    tf = tf if tf in ("day", "month", "all") else "day"
+    tf = tf if tf in ("5m", "15m", "30m", "1h", "4h", "1d") else "1h"
     candles = await ex_service.candles(session, tf)
     await session.commit()
     return {"tf": tf, "candles": candles}

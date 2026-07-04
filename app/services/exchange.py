@@ -7,7 +7,7 @@
 import random
 from datetime import timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import (
@@ -315,36 +315,42 @@ async def rate_usd(session: AsyncSession) -> float:
 
 # ---------------------------------------------------------------- график / вид
 
-_TF = {
-    "day": ("%Y-%m-%d %H:00", timedelta(hours=24)),
-    "month": ("%Y-%m-%d", timedelta(days=30)),
-    "all": ("%Y-%m-%d", None),
+# таймфрейм → длина свечи в секундах (как у TradingView)
+_TF_SEC = {
+    "5m": 300,
+    "15m": 900,
+    "30m": 1800,
+    "1h": 3600,
+    "4h": 14400,
+    "1d": 86400,
 }
+CANDLE_LIMIT = 80  # сколько последних свечей отдаём
 
 
 async def candles(session: AsyncSession, tf: str) -> list[dict]:
-    """OHLC-свечи по бакетам для трейдерского графика.
+    """OHLC-свечи фиксированной длины (бакеты по секундам) для трейдерского графика.
 
-    open/close берём как первую/последнюю цену в бакете (по id сделки),
-    high/low — max/min. Возвращает [{t, o, h, l, c, v}].
+    Бакет = floor(epoch / sec) * sec. open/close — первая/последняя сделка в бакете,
+    high/low — max/min. Возвращает последние CANDLE_LIMIT свечей: [{t, o, h, l, c, v}],
+    t — эпоха начала свечи (сек, UTC).
     """
-    fmt, span = _TF.get(tf, _TF["day"])
-    bucket = func.strftime(fmt, Trade.created_at).label("bucket")
+    sec = _TF_SEC.get(tf, 3600)
+    epoch = cast(func.strftime("%s", Trade.created_at), Integer)
+    bstart = (epoch - epoch % sec).label("bstart")  # начало свечи (epoch, целое)
     q = (
         select(
-            bucket,
+            bstart,
             func.min(Trade.price_micro),
             func.max(Trade.price_micro),
             func.min(Trade.id),
             func.max(Trade.id),
             func.coalesce(func.sum(Trade.amount_coins), 0),
         )
-        .group_by("bucket")
-        .order_by("bucket")
+        .group_by("bstart")
+        .order_by(func.min(Trade.id).desc())
+        .limit(CANDLE_LIMIT)
     )
-    if span is not None:
-        q = q.where(Trade.created_at >= utcnow() - span)
-    rows = (await session.execute(q)).all()
+    rows = list(reversed((await session.execute(q)).all()))
 
     # цены первой/последней сделки в бакете (open/close)
     prices: dict[int, int] = {}
@@ -361,12 +367,12 @@ async def candles(session: AsyncSession, tf: str) -> list[dict]:
             prices[tid] = pm
 
     out = []
-    for b, lo, hi, first_id, last_id, vol in rows:
+    for bstart, lo, hi, first_id, last_id, vol in rows:
         o = prices.get(first_id, lo)
         c = prices.get(last_id, hi)
         out.append(
             {
-                "t": b,
+                "t": int(bstart),
                 "o": round(o / USD_MICRO, 6),
                 "h": round(hi / USD_MICRO, 6),
                 "l": round(lo / USD_MICRO, 6),
@@ -377,7 +383,7 @@ async def candles(session: AsyncSession, tf: str) -> list[dict]:
     if not out:
         cfg = await get_market_config(session)
         p = _usd(cfg.official_micro)
-        out = [{"t": "", "o": p, "h": p, "l": p, "c": p, "v": 0}]
+        out = [{"t": 0, "o": p, "h": p, "l": p, "c": p, "v": 0}]
     return out
 
 

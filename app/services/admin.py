@@ -302,6 +302,16 @@ async def user_action(
             raise GameError("bad_amount", "Amount must not be 0")
         await credit_usd(session, u, micro, "admin_give")
         await safe_send(uid, f"🎁 Admin sent you <b>{micro / USD_MICRO:g} USD</b>")
+    elif action == "set_coins":
+        target = int(value or 0)
+        delta = target - u.coins
+        if delta:
+            await credit(session, u, delta, "admin_set", count_earned=False)
+    elif action == "set_usd":
+        target = round(float(value or 0) * USD_MICRO)
+        delta = target - u.usd_micro
+        if delta:
+            await credit_usd(session, u, delta, "admin_set")
     else:
         raise GameError("bad_action", "Unknown action")
     return _user_row(u)

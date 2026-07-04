@@ -13,7 +13,8 @@
       "Bash(git add *)",
       "Bash(git commit -q -m ' *)",
       "Bash(node --check webapp/js/app.js)",
-      "Bash(.venv/Scripts/python.exe -c \"import sys; sys.path.insert\\(0,'.'\\); from app.web.app import create_app; create_app\\(\\); import app.constants as c; print\\('backend OK, mine_rate=%s combo=%s'%\\(c.BASE_MINE_RATE, c.COMBO_BONUS_PER_POWER\\)\\)\")"
+      "Bash(.venv/Scripts/python.exe -c \"import sys; sys.path.insert\\(0,'.'\\); from app.web.app import create_app; create_app\\(\\); import app.constants as c; print\\('backend OK, mine_rate=%s combo=%s'%\\(c.BASE_MINE_RATE, c.COMBO_BONUS_PER_POWER\\)\\)\")",
+      "Bash(node --check webapp/js/admin.js)"
     ]
   }
 }
