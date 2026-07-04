@@ -445,3 +445,85 @@ h1 { font-size: 25px; font-weight: 800; letter-spacing: -0.4px; margin: 6px 2px 
 .lvl-flash { position: fixed; inset: 0; z-index: 80; pointer-events: none;
   background: radial-gradient(circle, rgba(232, 193, 90, 0.22), transparent 65%);
   animation: flash 0.8s ease-out forwards; }
+
+/* ═══════════ v0.6 P2P · chat · UZS ═══════════ */
+.bal-uzs { color: var(--txt-dim); font-size: 15px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.uzs-badge { color: var(--gold); font-weight: 700; margin-right: 2px; }
+
+/* p2p top bar */
+.p2p-top { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; margin-bottom: 12px; }
+.p2p-price { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; }
+.p2p-right { display: flex; align-items: center; gap: 12px; }
+.p2p-bal { display: flex; align-items: center; gap: 6px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.frozen-note { padding: 10px 14px; margin-bottom: 10px; font-size: 13px; color: var(--red); text-align: center; }
+
+/* info + cap cards */
+.info-card { padding: 14px 16px; margin: 12px 0 8px; }
+.info-t { font-weight: 700; margin-bottom: 6px; }
+.info-p { font-size: 13px; color: var(--txt-dim); line-height: 1.5; }
+.cap-card { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; margin-bottom: 12px; font-size: 14px; }
+.cap-card b { color: var(--gold); font-variant-numeric: tabular-nums; }
+
+.item.busy { opacity: 0.5; }
+.item-btn.gold { background: linear-gradient(135deg, var(--gold), var(--gold-deep)); color: #14100a; border: none; }
+.item-btn.danger { color: var(--red); }
+
+/* deal status pills */
+.deal-status { font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 999px; white-space: nowrap;
+  background: rgba(255,255,255,0.08); color: var(--txt-dim); }
+.deal-status.s-pending_payment { background: rgba(232,193,90,0.14); color: var(--gold); }
+.deal-status.s-paid { background: rgba(88,214,141,0.14); color: var(--green); }
+.deal-status.s-completed, .deal-status.s-resolved { background: rgba(88,214,141,0.14); color: var(--green); }
+.deal-status.s-disputed { background: rgba(255,107,107,0.16); color: var(--red); }
+.deal-status.s-cancelled { background: rgba(255,255,255,0.08); color: var(--txt-dim); }
+
+/* deal + chat overlay */
+.deal-view { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;
+  background: radial-gradient(120vh 90vh at 50% -20vh, #171310 0%, #0b0a08 60%);
+  padding: calc(env(safe-area-inset-top) + 8px) 12px calc(env(safe-area-inset-bottom) + 8px); }
+.deal-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; margin-bottom: 8px; }
+.deal-head .btn-back { margin-bottom: 0; }
+.deal-title { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.deal-title b { font-size: 15px; }
+.deal-info { padding: 10px 14px; margin-bottom: 8px; }
+.di-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; font-size: 13px; }
+.di-row span { color: var(--txt-dim); }
+.di-row b { font-variant-numeric: tabular-nums; }
+.di-row.req b { color: var(--gold); word-break: break-all; text-align: right; margin-left: 12px; }
+
+.chat-scroll { flex: 1; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column;
+  gap: 8px; padding: 6px 2px; }
+.chat-scroll::-webkit-scrollbar { display: none; }
+.msg-sys { align-self: center; text-align: center; font-size: 12px; color: var(--txt-dim);
+  background: rgba(255,255,255,0.05); padding: 6px 12px; border-radius: 12px; max-width: 88%; }
+.msg { max-width: 78%; align-self: flex-start; }
+.msg.mine { align-self: flex-end; }
+.msg-name { font-size: 11px; color: var(--gold); margin: 0 0 3px 8px; }
+.msg-bubble { padding: 9px 13px; border-radius: 16px; font-size: 14px; line-height: 1.35; word-break: break-word;
+  background: var(--glass-strong); border: 1px solid var(--stroke-soft); border-bottom-left-radius: 5px; }
+.msg.mine .msg-bubble { background: linear-gradient(135deg, rgba(232,193,90,0.22), rgba(201,154,46,0.18));
+  border-color: var(--stroke); border-bottom-left-radius: 16px; border-bottom-right-radius: 5px; }
+.msg.admin .msg-bubble { background: rgba(255,107,107,0.12); border-color: rgba(255,107,107,0.3); }
+.msg-photo { max-width: 200px; max-height: 240px; border-radius: 12px; display: block; }
+
+.deal-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 8px 2px; }
+.deal-actions button { flex: 1; min-width: 44%; padding: 12px; border-radius: 15px; font-size: 14px; }
+.deal-actions:empty { display: none; }
+
+.chat-input { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 18px; margin-top: 4px; }
+.chat-input input#chatText { flex: 1; background: none; border: none; outline: none; color: var(--txt); font-size: 15px; padding: 6px; }
+.chat-attach, .chat-send { width: 38px; height: 38px; border-radius: 12px; flex: none; display: grid; place-items: center;
+  background: var(--glass-strong); border: 1px solid var(--stroke-soft); }
+.chat-send { background: linear-gradient(135deg, var(--gold), var(--gold-deep)); border: none; }
+.chat-send i, .chat-attach i { width: 18px; height: 18px; }
+.chat-send i svg { color: #14100a; }
+
+/* staff */
+.staff-card { display: flex; align-items: center; justify-content: space-between; width: 100%;
+  padding: 14px 16px; margin-bottom: 12px; }
+.staff-badge { min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px; display: grid; place-items: center;
+  font-size: 12px; font-weight: 700; background: rgba(255,107,107,0.18); color: var(--red); }
+.dispute-card { padding: 12px 14px; margin-bottom: 10px; }
+.dispute-card .row-btns button { flex: 1; padding: 9px; font-size: 12px; border-radius: 12px; }
+.field select { width: 100%; padding: 12px 14px; border-radius: 14px; background: var(--glass-strong);
+  border: 1px solid var(--stroke-soft); color: var(--txt); font-size: 15px; outline: none; }

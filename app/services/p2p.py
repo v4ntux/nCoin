@@ -252,6 +252,8 @@ async def release(session: AsyncSession, user: User, deal_id: int) -> dict:
         buyer_id=deal.buyer_id, seller_id=deal.seller_id,
         price_micro=deal.price_uzs, amount_coins=deal.amount_coins, taker_side="buy",
     ))
+    from app.services import market
+    await market.mark_deal_price(session, deal.price_uzs)
     deal.escrow_coins = 0
     deal.status = "completed"
     deal.completed_at = utcnow()
@@ -477,6 +479,8 @@ async def resolve(
                 await credit(session, platform, fee, "p2p_fee", {"deal": deal.id}, count_earned=False)
         session.add(Trade(buyer_id=deal.buyer_id, seller_id=deal.seller_id,
                           price_micro=deal.price_uzs, amount_coins=deal.amount_coins, taker_side="buy"))
+        from app.services import market
+        await market.mark_deal_price(session, deal.price_uzs)
     else:  # refund
         if seller:
             await credit(session, seller, deal.escrow_coins, "p2p_refund", {"deal": deal.id, "admin": True}, count_earned=False)

@@ -43,15 +43,11 @@ def _glide_price(cfg: MarketConfig) -> int:
 
 
 async def price_uzs(session: AsyncSession) -> int:
-    """Текущий курс: сколько UZS стоит 1 Coin.
+    """Текущий курс: официальная цена с плавным доездом к цели админа.
 
-    Приоритет — последняя реальная сделка, иначе плавная официальная цена.
+    Реальные сделки двигают эту же цену (mark_deal_price), админ — тоже
+    (set_official_price, с доездом за 5 минут). Никаких fake-ботов.
     """
-    last = (
-        await session.execute(select(Trade.price_micro).order_by(Trade.id.desc()).limit(1))
-    ).scalar_one_or_none()
-    if last is not None:
-        return int(last)
     return _glide_price(await get_config(session))
 
 
@@ -64,6 +60,14 @@ async def set_official_price(session: AsyncSession, target: int) -> None:
     cfg = await get_config(session)
     cfg.base_uzs = _glide_price(cfg)
     cfg.target_uzs = max(1, int(target))
+    cfg.set_at = utcnow()
+    cfg.updated_at = utcnow()
+
+
+async def mark_deal_price(session: AsyncSession, price: int) -> None:
+    """Завершённая сделка мгновенно двигает курс на свою цену (без доезда)."""
+    cfg = await get_config(session)
+    cfg.base_uzs = cfg.target_uzs = max(1, int(price))
     cfg.set_at = utcnow()
     cfg.updated_at = utcnow()
 
