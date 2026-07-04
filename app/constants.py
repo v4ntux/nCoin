@@ -16,12 +16,12 @@ BASE_CRIT_CHANCE = 0.05      # шанс крита
 CRIT_MULTIPLIER = 10         # крит = power * 10
 BASE_DOUBLE_CHANCE = 0.0     # шанс x2 (открывается апгрейдом)
 COMBO_STEP = 50              # каждые N тапов подряд — бонус
-COMBO_BONUS_PER_POWER = 25   # бонус = tap_power * 25
+COMBO_BONUS_PER_POWER = 8    # бонус = tap_power * 8 (сложнее фармить)
 COMBO_RESET_GAP = 6.0        # сек тишины, после которых комбо сгорает
 
 # ---------------------------------------------------------------- энергия
 BASE_ENERGY_MAX = 1000
-BASE_ENERGY_REGEN = 1 / 3    # ед/сек
+BASE_ENERGY_REGEN = 1 / 6    # ед/сек — медленнее восстановление, реже тапы
 
 # ---------------------------------------------------------------- heat
 HEAT_MAX = 100.0
@@ -30,7 +30,7 @@ BASE_HEAT_DECAY = 3.0        # ед/сек
 OVERHEAT_LOCK_SECONDS = 30
 
 # ---------------------------------------------------------------- майнинг
-BASE_MINE_RATE = 20.0        # Coin/час
+BASE_MINE_RATE = 5.0         # Coin/час — в 4× медленнее пассив
 MINE_CYCLE_HOURS = 2.0       # базовый цикл накопления
 MIN_CYCLE_HOURS = 0.5        # ниже cooling не уводит
 

@@ -167,7 +167,6 @@ function renderUser() {
 }
 function renderBalance() {
   $("balCoins").textContent = fmt(S.user.coins + optimisticGain);
-  $("balUsd").textContent = "≈ " + fmtUsd((S.user.coins + optimisticGain) * S.economy.usd_rate) + " USD";
 }
 
 function tickHome() {
@@ -370,7 +369,16 @@ $("dailyBtn").addEventListener("click", async () => {
 async function loadNews() {
   try {
     const r = await api("/news");
-    $("newsStrip").innerHTML = r.items
+    const strip = $("newsStrip");
+    const head = strip.previousElementSibling; // list-head "News & Events"
+    if (!r.items.length) {
+      strip.classList.add("hidden");
+      if (head) head.classList.add("hidden");
+      return;
+    }
+    strip.classList.remove("hidden");
+    if (head) head.classList.remove("hidden");
+    strip.innerHTML = r.items
       .map(
         (n) => `
       <div class="news-card">
@@ -1257,15 +1265,21 @@ async function boot() {
 
 setInterval(tickHome, 250);
 setInterval(tickEventTimers, 1000);
+// живое автообновление активного экрана (баланс/переводы/рынок сами обновляются)
 setInterval(async () => {
   if (!S || document.hidden || pendingTaps > 0 || flushing) return;
+  if (!$("sheet").classList.contains("hidden")) return; // открыт лист — не мешаем
+  const active = document.querySelector(".screen.active")?.id;
   try {
+    if (active === "screen-market") { loadMarket(); return; }
+    if (active === "screen-wallet") { loadWallet(); return; }
+    // на остальных экранах тихо обновляем стейт (баланс/майнинг/входящие)
     const fresh = await api("/state");
     applySnapshot(fresh);
     renderUser();
     renderBalance();
   } catch {}
-}, 45000);
+}, 4000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && S) boot(); });
 
 boot();

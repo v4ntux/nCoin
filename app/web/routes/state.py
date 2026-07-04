@@ -77,10 +77,8 @@ async def news(session: AsyncSession = Depends(get_session)) -> dict:
         .scalars()
         .all()
     )
-    if rows:
-        items = [{"tag": n.tag, "title": n.title, "text": n.text} for n in rows]
-    else:
-        items = NEWS  # дефолт, пока админ не добавил своих
+    # только карточки, добавленные админом; пусто — секция скрыта на фронте
+    items = [{"tag": n.tag, "title": n.title, "text": n.text} for n in rows]
     return {"items": items}
 
 
