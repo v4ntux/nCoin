@@ -68,13 +68,15 @@ def xp_to_next(level: int) -> int:
 
 
 # ---------------------------------------------------------------- рефералы
-REF_BONUS_NEW = 500          # новичку, пришедшему по ссылке
-REF_BONUS_INVITER = 1000     # пригласившему
-BASE_REF_SHARE = 0.03        # доля с Collect друга
+# Мелкие бонусы под философию дефицита (коин дорог). Разовые, не режутся капом.
+REF_BONUS_NEW = 20           # новичку, пришедшему по ссылке
+REF_BONUS_INVITER = 30       # пригласившему
+BASE_REF_SHARE = 0.03        # доля с заработков друга
 REF_SHARE_CAP = 0.08
 
 # ---------------------------------------------------------------- daily reward
-DAILY_REWARDS = [100, 200, 400, 700, 1200, 2000, 5000]  # день 1..7, дальше день 7
+# Мелкие числа под дневной кап 150 — коин дорог, его добывают, а не фармят.
+DAILY_REWARDS = [10, 15, 20, 25, 30, 40, 50]  # день 1..7, дальше день 7
 
 # ---------------------------------------------------------------- VIP / кошелёк
 # Тир = слоты вывода в неделю + скидка на ВСЕ комиссии. Депозит в реальных доллах.
@@ -202,42 +204,34 @@ UPGRADE_EFFECTS = {
 }
 
 # ---------------------------------------------------------------- задания
-# kind: open | taps | collect | earn | invite | link
+# kind: open | invite | deal | link (устаревшие taps/collect/earn убраны с кликером)
 TASKS: dict[str, dict] = {
     "d_open": {
         "cat": "daily", "name": "Open the app", "emoji": "📲",
-        "goal": 1, "reward": 50, "xp": 10, "kind": "open",
+        "goal": 1, "reward": 10, "xp": 10, "kind": "open",
     },
-    "d_collect3": {
-        "cat": "daily", "name": "Collect 3 times", "emoji": "⛏",
-        "goal": 3, "reward": 150, "xp": 30, "kind": "collect",
-    },
-    "d_taps500": {
-        "cat": "daily", "name": "Make 500 taps", "emoji": "👆",
-        "goal": 500, "reward": 100, "xp": 20, "kind": "taps",
+    "d_deal": {
+        "cat": "daily", "name": "Close a P2P deal", "emoji": "🤝",
+        "goal": 1, "reward": 30, "xp": 30, "kind": "deal",
     },
     "d_invite": {
         "cat": "daily", "name": "Invite a friend", "emoji": "👥",
-        "goal": 1, "reward": 300, "xp": 50, "kind": "invite",
+        "goal": 1, "reward": 40, "xp": 50, "kind": "invite",
     },
-    "w_coins3000": {
-        "cat": "weekly", "name": "Earn 3 000 Coin", "emoji": "🪙",
-        "goal": 3000, "reward": 1000, "xp": 150, "kind": "earn",
+    "w_deal5": {
+        "cat": "weekly", "name": "Close 5 P2P deals", "emoji": "💱",
+        "goal": 5, "reward": 60, "xp": 150, "kind": "deal",
     },
     "w_invite5": {
         "cat": "weekly", "name": "Invite 5 friends", "emoji": "🤝",
-        "goal": 5, "reward": 2500, "xp": 300, "kind": "invite",
-    },
-    "w_collect20": {
-        "cat": "weekly", "name": "Collect 20 times", "emoji": "🏭",
-        "goal": 20, "reward": 800, "xp": 120, "kind": "collect",
+        "goal": 5, "reward": 80, "xp": 300, "kind": "invite",
     },
     "s_channel": {
         "cat": "special", "name": "Join our channel", "emoji": "📢",
-        "goal": 1, "reward": 500, "xp": 100, "kind": "link", "url": "",
+        "goal": 1, "reward": 50, "xp": 100, "kind": "link", "url": "",
     },
     "s_partner": {
         "cat": "special", "name": "Partner quest", "emoji": "🎁",
-        "goal": 1, "reward": 1000, "xp": 150, "kind": "link", "url": "https://telegram.org",
+        "goal": 1, "reward": 50, "xp": 150, "kind": "link", "url": "https://telegram.org",
     },
 }

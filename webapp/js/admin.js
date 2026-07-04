@@ -143,16 +143,14 @@ function drawChart(vals, isLine) {
 async function loadDashboard() {
   try {
     const r = await api("/admin/stats");
-    $("topPrice").textContent = fmtPx(r.market.price) + " USD";
+    $("topPrice").textContent = fmt(r.market.price) + " UZS";
     const m = r.market;
     $("kpiGrid").innerHTML = [
       ["Users", fmt(r.users.total), `+${r.users.new_24h} today · ${r.users.active_24h} active`],
       ["Coin supply", fmt(r.supply.coins), "in players' wallets"],
-      ["USD supply", fmtUsd(r.supply.usd), "on balances"],
-      ["Price", fmtPx(m.price), `official ${fmtPx(m.official)}`],
-      ["Band", `${fmtPx(m.band_min)}–${fmtPx(m.band_max)}`, "today's corridor"],
-      ["Volume 24h", fmt(m.volume_24h), `${m.trades_24h} trades`],
-      ["Open orders", fmt(m.open_orders), "on the book"],
+      ["Price", fmt(m.price) + " UZS", `official ${fmt(m.official)}`],
+      ["Deals 24h", fmt(m.trades_24h), `${fmt(m.volume_24h)} Coin volume`],
+      ["Disputes", fmt(m.open_disputes), "open, need review"],
       ["Pending", `${r.pending.withdraws + r.pending.deposits}`, `${r.pending.withdraws} wd · ${r.pending.deposits} dep`],
     ]
       .map(([label, val, sub]) => `<div class="kpi"><span>${label}</span><b>${val}</b><div class="sub">${sub}</div></div>`)
@@ -312,36 +310,29 @@ function bindReq() {
   $("a-requests").querySelectorAll("[data-no]").forEach((b) => b.addEventListener("click", () => decide(b.dataset.no, false)));
 }
 
-/* ═══ market ═══ */
+/* ═══ market (UZS, плавный доезд за 5 мин) ═══ */
 function mkPreview() {
   const o = +$("mkOfficialIn").value || 0;
-  const d = +$("mkDeltaIn").value || 0;
-  $("mkBandPreview").textContent = o
-    ? `Band: ${fmtPx(Math.max(0, o - d))} – ${fmtPx(o + d)} USD`
-    : "";
+  const el = $("mkBandPreview");
+  if (el) el.textContent = o ? `Price will glide to ${fmt(o)} UZS over 5 min` : "";
 }
 async function loadMarket() {
   try {
     const r = await api("/admin/market");
-    $("mkLast").textContent = fmtPx(r.last);
-    $("mkOfficial").textContent = fmtPx(r.official);
-    $("mkMin").textContent = fmtPx(r.day_min);
-    $("mkMax").textContent = fmtPx(r.day_max);
-    $("mkUpdated").textContent = "Updated: " + (r.updated_at ? new Date(r.updated_at * 1000).toLocaleString() : "—");
-    $("mkOfficialIn").value = r.official;
-    $("mkDeltaIn").value = r.delta;
+    if ($("mkLast")) $("mkLast").textContent = fmt(r.last) + " UZS";
+    if ($("mkOfficial")) $("mkOfficial").textContent = fmt(r.official) + " UZS";
+    if ($("mkMin")) $("mkMin").textContent = "target " + fmt(r.target) + " UZS";
+    if ($("mkMax")) $("mkMax").textContent = "";
+    if ($("mkUpdated")) $("mkUpdated").textContent = "Updated: " + (r.updated_at ? new Date(r.updated_at * 1000).toLocaleString() : "—");
+    $("mkOfficialIn").value = r.target;
     mkPreview();
   } catch (e) { toast(e.message, "err"); }
 }
-["mkOfficialIn", "mkDeltaIn"].forEach((id) => $(id).addEventListener("input", mkPreview));
+$("mkOfficialIn").addEventListener("input", mkPreview);
 $("mkSave").addEventListener("click", async () => {
   try {
-    const r = await api("/admin/market", {
-      official_usd: +$("mkOfficialIn").value,
-      delta_usd: +$("mkDeltaIn").value || 0,
-      push_trade: $("mkPush").checked,
-    });
-    toast("Price set → " + fmtPx(r.official) + " USD", "ok");
+    const r = await api("/admin/market", { target_uzs: +$("mkOfficialIn").value });
+    toast("Price target → " + fmt(r.target) + " UZS (gliding)", "ok");
     loadMarket();
   } catch (e) { toast(e.message, "err"); }
 });

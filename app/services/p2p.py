@@ -252,8 +252,11 @@ async def release(session: AsyncSession, user: User, deal_id: int) -> dict:
         buyer_id=deal.buyer_id, seller_id=deal.seller_id,
         price_micro=deal.price_uzs, amount_coins=deal.amount_coins, taker_side="buy",
     ))
-    from app.services import market
+    from app.services import market, tasks as tasks_service
     await market.mark_deal_price(session, deal.price_uzs)
+    if buyer:
+        await tasks_service.bump(session, buyer, "deal")
+    await tasks_service.bump(session, user, "deal")
     deal.escrow_coins = 0
     deal.status = "completed"
     deal.completed_at = utcnow()
