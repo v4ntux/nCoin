@@ -5,3 +5,4 @@ SQLAlchemy>=2.0.41
 aiosqlite>=0.21
 pydantic>=2.11
 pydantic-settings>=2.9
+python-multipart>=0.0.9

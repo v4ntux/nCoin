@@ -10,24 +10,18 @@ from app.core.clock import ts, utcnow
 from app.core.vip import tier_name
 from app.db.models import (
     CustomTask,
+    Deal,
     DepositRequest,
     Event,
     LedgerEntry,
     News,
-    Order,
     Trade,
     User,
     WithdrawRequest,
 )
+from app.services import market
 from app.services.economy import credit, credit_usd
 from app.services.errors import GameError
-from app.services.exchange import (
-    candles as price_candles,
-    fake_trade,
-    get_market_config,
-    keep_price_in_band,
-    last_price_micro,
-)
 
 
 def _usd(micro: int) -> float:
@@ -48,6 +42,7 @@ def _user_row(u: User) -> dict:
         "ref_count": u.ref_count,
         "banned": u.banned,
         "frozen": u.frozen,
+        "is_operator": u.is_operator,
         "created_at": ts(u.created_at),
         "last_seen_at": ts(u.last_seen_at),
     }
@@ -100,14 +95,14 @@ async def stats(session: AsyncSession) -> dict:
             )
         )
     ).scalar_one()
-    open_orders = (
+    open_disputes = (
         await session.execute(
-            select(func.count(Order.id)).where(Order.status == "open")
+            select(func.count(Deal.id)).where(Deal.status == "disputed")
         )
     ).scalar_one()
 
-    cfg = await get_market_config(session)
-    last = await last_price_micro(session)
+    price = await market.price_uzs(session)
+    official = await market.official_price_uzs(session)
     top = (
         (
             await session.execute(
@@ -128,13 +123,11 @@ async def stats(session: AsyncSession) -> dict:
         },
         "supply": {"coins": int(coins_supply), "usd": _usd(int(usd_supply))},
         "market": {
-            "price": _usd(last),
-            "official": _usd(cfg.official_micro),
-            "band_min": _usd(cfg.day_min_micro),
-            "band_max": _usd(cfg.day_max_micro),
+            "price": price,
+            "official": official,
             "trades_24h": int(trades_24h),
             "volume_24h": int(volume_24h),
-            "open_orders": open_orders,
+            "open_disputes": int(open_disputes),
         },
         "pending": {"withdraws": pending_w, "deposits": pending_d},
         "top": [_user_row(u) for u in top],
@@ -144,7 +137,8 @@ async def stats(session: AsyncSession) -> dict:
 async def chart(session: AsyncSession, kind: str, tf: str = "month") -> list[dict]:
     """3 типа графиков: цена (свечи→линия close), рост юзеров, объём торгов."""
     if kind == "price":
-        return [{"t": c["t"], "v": c["c"]} for c in await price_candles(session, tf)]
+        mtf = {"day": "1h", "month": "1d"}.get(tf, "1d")
+        return [{"t": c["t"], "v": c["c"]} for c in await market.candles(session, mtf)]
 
     span = {"day": timedelta(days=1), "month": timedelta(days=30)}.get(tf)
     if kind == "users":
@@ -282,6 +276,11 @@ async def user_action(
     elif action == "unfreeze":
         u.frozen = False
         await safe_send(uid, "✅ Your wallet is active again.")
+    elif action == "operator":
+        u.is_operator = True
+        await safe_send(uid, "🛡 You are now a P2P dispute operator.")
+    elif action == "unoperator":
+        u.is_operator = False
     elif action == "vip":
         tier = int(value or 0)
         if tier not in (0, 1, 2, 3):
@@ -483,42 +482,21 @@ async def event_toggle(session: AsyncSession, event_id: int, active: bool) -> di
 
 
 async def market_admin_view(session: AsyncSession) -> dict:
-    cfg = await get_market_config(session)
-    last = await last_price_micro(session)
-    delta = (cfg.day_max_micro - cfg.day_min_micro) / 2
+    cfg = await market.get_config(session)
     return {
-        "official": _usd(cfg.official_micro),
-        "delta": round(delta / USD_MICRO, 6),
-        "day_min": _usd(cfg.day_min_micro),
-        "day_max": _usd(cfg.day_max_micro),
-        "last": _usd(last),
+        "official": await market.official_price_uzs(session),
+        "target": cfg.target_uzs,
+        "last": await market.price_uzs(session),
         "updated_at": ts(cfg.updated_at),
     }
 
 
-async def market_set(
-    session: AsyncSession,
-    official_usd: float,
-    delta_usd: float,
-    push: bool = True,
-) -> dict:
-    """Админ задаёт цену + допуск (±). Коридор = official ∓ delta."""
-    o = round(official_usd * USD_MICRO)
-    d = round(max(0.0, delta_usd) * USD_MICRO)
-    mn = max(1, o - d)
-    mx = o + d
-    if o <= 0:
-        raise GameError("bad_band", "Price must be positive")
-    cfg = await get_market_config(session)
-    cfg.official_micro, cfg.day_min_micro, cfg.day_max_micro = o, mn, mx
-    cfg.updated_at = utcnow()
-    if push:
-        # instant: админ хочет цену прямо сейчас — резкий скачок к official
-        await fake_trade(session, o)
-    else:
-        # gradual: маркетмейкер сам плавно доведёт цену к target за несколько тиков
-        # (keep_price_in_band крутится в фоне каждую минуту). Первый шаг — сразу.
-        await keep_price_in_band(session)
+async def market_set(session: AsyncSession, target_uzs: float) -> dict:
+    """Админ задаёт цель курса в UZS. Цена плавно доедет за 5 минут (без fake-ботов)."""
+    target = round(float(target_uzs))
+    if target <= 0:
+        raise GameError("bad_price", "Price must be positive")
+    await market.set_official_price(session, target)
     return await market_admin_view(session)
 
 

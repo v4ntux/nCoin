@@ -173,9 +173,7 @@ async def market(
 
 
 class MarketBody(BaseModel):
-    official_usd: float = Field(gt=0)
-    delta_usd: float = Field(ge=0)
-    push_trade: bool = False
+    target_uzs: float = Field(gt=0)
 
 
 @router.post("/market")
@@ -184,9 +182,7 @@ async def market_set(
     admin: User = Depends(current_admin),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    result = await admin_service.market_set(
-        session, body.official_usd, body.delta_usd, body.push_trade
-    )
+    result = await admin_service.market_set(session, body.target_uzs)
     await session.commit()
     return result
 

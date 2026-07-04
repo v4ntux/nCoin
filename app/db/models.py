@@ -56,7 +56,10 @@ class User(Base):
     streak_date: Mapped[str | None] = mapped_column(String(10))  # YYYY-MM-DD клейма
 
     banned: Mapped[bool] = mapped_column(Boolean, default=False)
-    frozen: Mapped[bool] = mapped_column(Boolean, default=False)  # блок кошелька/биржи
+    frozen: Mapped[bool] = mapped_column(Boolean, default=False)  # блок торговли/вывода
+    is_operator: Mapped[bool] = mapped_column(Boolean, default=False)  # саб-админ споров
+    earned_today: Mapped[int] = mapped_column(Integer, default=0)  # для дневного капа
+    earned_date: Mapped[str | None] = mapped_column(String(10))  # YYYY-MM-DD капа
     display_name: Mapped[str | None] = mapped_column(String(32))  # своё имя в профиле
     theme: Mapped[str] = mapped_column(String(16), default="gold")  # фон профиля
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -160,14 +163,22 @@ class Trade(Base):
 
 
 class MarketConfig(Base):
-    """Одна строка (id=1): официальный курс и дневной коридор, задаёт админ."""
+    """Одна строка (id=1): официальный курс в UZS с плавным доездом за 5 минут.
+
+    Отображаемая цена = lerp(base_uzs, target_uzs, (now-set_at)/PRICE_GLIDE_SEC).
+    Никаких fake-ботов: между сделками цена просто плавно едет к цели админа.
+    """
 
     __tablename__ = "market_config"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    official_micro: Mapped[int] = mapped_column(BigInteger)
-    day_min_micro: Mapped[int] = mapped_column(BigInteger)
-    day_max_micro: Mapped[int] = mapped_column(BigInteger)
+    base_uzs: Mapped[int] = mapped_column(BigInteger, default=0)      # цена в момент set
+    target_uzs: Mapped[int] = mapped_column(BigInteger, default=0)    # цель админа
+    set_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # legacy-поля USD-эры (не используются, оставлены для совместимости схемы)
+    official_micro: Mapped[int] = mapped_column(BigInteger, default=0)
+    day_min_micro: Mapped[int] = mapped_column(BigInteger, default=0)
+    day_max_micro: Mapped[int] = mapped_column(BigInteger, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -257,3 +268,68 @@ class Setting(Base):
     support_text: Mapped[str] = mapped_column(String(256), default="")
     # vip = {"1": {"price": 10, "discount": 25, "withdraws": 1}, ...}
     vip: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class Ad(Base):
+    """P2P-объявление на продажу коинов за UZS. Коины в эскроу с момента создания.
+
+    remaining_coins — сколько ещё доступно (уменьшается при активной сделке).
+    В MVP только side='sell'.
+    """
+
+    __tablename__ = "ads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    side: Mapped[str] = mapped_column(String(4), default="sell", index=True)
+    price_uzs: Mapped[int] = mapped_column(BigInteger)          # UZS за 1 Coin
+    amount_coins: Mapped[int] = mapped_column(BigInteger)       # всего в объявлении
+    remaining_coins: Mapped[int] = mapped_column(BigInteger)    # ещё доступно
+    pay_method: Mapped[str] = mapped_column(String(16), default="card")
+    pay_details: Mapped[str] = mapped_column(String(128), default="")  # карта/реквизиты
+    status: Mapped[str] = mapped_column(  # active | closed
+        String(16), default="active", index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class Deal(Base):
+    """Сделка по объявлению: эскроу + чат + подтверждения обеих сторон.
+
+    status: pending_payment | paid | completed | cancelled | disputed | resolved
+    resolution (когда resolved): release (покупателю) | refund (продавцу)
+    """
+
+    __tablename__ = "deals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ad_id: Mapped[int] = mapped_column(Integer, ForeignKey("ads.id"), index=True)
+    buyer_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    seller_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), index=True)
+    amount_coins: Mapped[int] = mapped_column(BigInteger)
+    price_uzs: Mapped[int] = mapped_column(BigInteger)
+    total_uzs: Mapped[int] = mapped_column(BigInteger)       # amount * price
+    fee_coins: Mapped[int] = mapped_column(BigInteger, default=0)
+    escrow_coins: Mapped[int] = mapped_column(BigInteger)    # заблокировано у продавца
+    status: Mapped[str] = mapped_column(String(20), default="pending_payment", index=True)
+    resolution: Mapped[str | None] = mapped_column(String(12))
+    pay_deadline: Mapped[datetime | None] = mapped_column(DateTime)  # дедлайн оплаты
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    disputed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class DealMessage(Base):
+    """Сообщение в чате сделки. sender_id=0 — системное/от админа."""
+
+    __tablename__ = "deal_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    deal_id: Mapped[int] = mapped_column(Integer, ForeignKey("deals.id"), index=True)
+    sender_id: Mapped[int] = mapped_column(BigInteger, default=0)
+    kind: Mapped[str] = mapped_column(String(8), default="text")  # text | photo | system
+    body: Mapped[str] = mapped_column(String(1024), default="")
+    media_path: Mapped[str | None] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)

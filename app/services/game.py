@@ -59,12 +59,14 @@ async def build_state(session: AsyncSession, user: User) -> dict:
         user.mining_started_at, now, eff.mine_rate, eff.cycle_hours, eff.extra_hours
     )
     can_claim, next_day = streak_status(user.streak_day, user.streak_date, now.date())
-    combo = user.combo
-    if user.last_tap_at and (now - user.last_tap_at).total_seconds() > COMBO_RESET_GAP:
-        combo = 0
-    from app.services.exchange import rate_usd
+    from app.config import get_settings
+    from app.constants import DAILY_EARN_CAP
+    from app.services import market
 
-    rate = await rate_usd(session)  # живой курс с биржи
+    price = await market.price_uzs(session)
+    is_staff = user.is_operator or user.id in get_settings().admin_id_list
+    today = now.date().isoformat()
+    earned_today = user.earned_today if user.earned_date == today else 0
     return {
         "version": APP_VERSION,
         "server_time": ts(now),
@@ -76,7 +78,7 @@ async def build_state(session: AsyncSession, user: User) -> dict:
             "xp": user.xp,
             "xp_next": xp_to_next(user.level),
             "coins": user.coins,
-            "usd": round(user.coins * rate, 4),
+            "value_uzs": user.coins * price,
             "vip": user.vip_tier,
             "vip_name": tier_name(user.vip_tier),
             "ref_count": user.ref_count,
@@ -84,35 +86,13 @@ async def build_state(session: AsyncSession, user: User) -> dict:
             "daily_available": can_claim,
             "daily_next_reward": reward_for_day(next_day),
             "daily_next_day": next_day,
+            "frozen": user.frozen,
+            "is_staff": is_staff,
+            "earned_today": earned_today,
+            "earn_cap": DAILY_EARN_CAP,
             "created_at": ts(user.created_at),
         },
-        "clicker": {
-            "tap_power": eff.tap_power,
-            "crit_chance": round(eff.crit_chance, 4),
-            "double_chance": round(eff.double_chance, 4),
-            "energy": round(energy, 2),
-            "energy_max": eff.energy_max,
-            "regen": round(eff.energy_regen, 4),
-            "heat": round(heat, 2),
-            "heat_max": HEAT_MAX,
-            "heat_decay": eff.heat_decay,
-            "heat_per_tap": HEAT_PER_TAP,
-            "combo": combo,
-            "overheat_until": ts(user.overheat_until),
-        },
-        "mining": {
-            "rate": round(eff.mine_rate, 1),
-            "mined": mv.mined,
-            "capacity": mv.capacity,
-            "progress": round(mv.progress, 4),
-            "ready_in": mv.ready_in_sec,
-            "window_hours": round(mv.window_hours, 2),
-            "started_at": ts(user.mining_started_at),
-        },
-        "economy": {
-            "usd_rate": rate,
-            "income_mult": round(eff.income_mult, 3),
-        },
+        "price_uzs": price,
     }
 
 

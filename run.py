@@ -46,29 +46,14 @@ async def _run_bot() -> None:
         log.exception("bot polling stopped — web keeps running")
 
 
-async def _market_keeper() -> None:
-    """Держит биржевой курс в коридоре админа fake-сделками маркетмейкера."""
-    from app.db.engine import SessionMaker
-    from app.services.exchange import keep_price_in_band
-
-    while True:
-        try:
-            async with SessionMaker() as session:
-                moved = await keep_price_in_band(session)
-                if moved:
-                    await session.commit()
-        except Exception:
-            log.exception("market keeper tick failed")
-        await asyncio.sleep(60)
-
-
 async def main() -> None:
     settings = get_settings()
     await init_db()
 
+    # Никаких fake-ботов: цена движется реальными P2P-сделками и плавным доездом
+    # к цели админа (app.services.market). Маркет-кипер удалён.
     tasks = [
         asyncio.create_task(_run_web(), name="web"),
-        asyncio.create_task(_market_keeper(), name="market"),
     ]
     if settings.bot_token:
         tasks.append(asyncio.create_task(_run_bot(), name="bot"))

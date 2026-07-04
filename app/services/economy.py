@@ -1,11 +1,36 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.constants import BASE_REF_SHARE, REF_SHARE_CAP, UPGRADE_EFFECTS
+from app.constants import (
+    BASE_REF_SHARE,
+    DAILY_EARN_CAP,
+    EARN_CAP_REASONS,
+    REF_SHARE_CAP,
+    UPGRADE_EFFECTS,
+)
+from app.core.clock import utcnow
 from app.db.models import LedgerEntry, UpgradeState, User
 
 # заработки, с которых реферер получает свою долю (без каскада: ref_share не тут)
 REF_EARN_REASONS = {"tap", "combo", "mining", "task", "daily", "event"}
+
+
+def clamp_daily_earn(user: User, amount: int, reason: str) -> int:
+    """Дневной кап заработка коинов: за задания/эвенты не больше DAILY_EARN_CAP/день.
+
+    P2P-переводы/возвраты (count_earned=False, reason p2p_*) сюда не попадают.
+    Возвращает разрешённую к начислению сумму (может быть 0).
+    """
+    if amount <= 0 or reason not in EARN_CAP_REASONS:
+        return amount
+    today = utcnow().date().isoformat()
+    if user.earned_date != today:
+        user.earned_date = today
+        user.earned_today = 0
+    allowed = max(0, DAILY_EARN_CAP - user.earned_today)
+    granted = min(amount, allowed)
+    user.earned_today += granted
+    return granted
 
 
 async def credit(
@@ -19,8 +44,13 @@ async def credit(
     """Единственная точка изменения Coin-баланса. amount < 0 — списание.
 
     count_earned=False для переводов/возвратов, чтобы не читерить задачи
-    «заработай N», total_earned и лиги.
+    «заработай N», total_earned и лиги. Начисления за задания/эвенты режутся
+    дневным капом (clamp_daily_earn).
     """
+    if amount > 0:
+        amount = clamp_daily_earn(user, amount, reason)
+        if amount == 0:
+            return
     user.coins += amount
     if amount > 0 and count_earned:
         user.total_earned += amount
